@@ -16,7 +16,7 @@ const gifEffects = require("./gifEffects");
 module.exports = async (client = Client.prototype) => {
   client.removeAllListeners();
 
-  client.on(Events.GuildCreate, async guild => {
+  client.on(Events.GuildCreate, async (guild) => {
     try {
       let existing = await Servers.findOne({ id: guild.id });
       if (!existing) {
@@ -53,21 +53,21 @@ module.exports = async (client = Client.prototype) => {
         let choices = [];
 
         if (interaction.commandName === "image") {
-          let initialChoices = Object.keys(imageEffects).map(key => ({
+          let initialChoices = Object.keys(imageEffects).map((key) => ({
             name: key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase(),
             value: key,
           }));
 
-          choices = initialChoices.filter(choice =>
+          choices = initialChoices.filter((choice) =>
             choice.name.includes(focused.toLowerCase())
           );
         } else if (interaction.commandName === "gif") {
-          let initialChoices = Object.keys(gifEffects).map(key => ({
+          let initialChoices = Object.keys(gifEffects).map((key) => ({
             name: key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase(),
             value: key,
           }));
 
-          choices = initialChoices.filter(choice =>
+          choices = initialChoices.filter((choice) =>
             choice.name.includes(focused.toLowerCase())
           );
         }
@@ -172,7 +172,7 @@ module.exports = async (client = Client.prototype) => {
   );
 
   const deletedByMe = new Set();
-  client.on(Events.MessageCreate, async message => {
+  client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot || !message.guildId) return;
 
     const config = await Servers.findOne({ id: message.guildId });
@@ -182,13 +182,11 @@ module.exports = async (client = Client.prototype) => {
 
       const words = message.content.trim().split(/\s+/);
 
-      if (words.length > wordsPerUser) {
-        if (message.deletable) await message.delete();
-        return;
-      }
-
-      if (lastUser === message.author.id) {
-        if (message.deletable) await message.delete();
+      if (lastUser === message.author.id || words.length !== wordsPerUser) {
+        if (message.deletable) {
+          deletedByMe.add(message.id);
+          await message.delete();
+        }
         return;
       }
 
@@ -351,7 +349,7 @@ module.exports = async (client = Client.prototype) => {
     }
   });
 
-  client.on(Events.MessageDelete, async message => {
+  client.on(Events.MessageDelete, async (message) => {
     if (message.author.bot || !message.guildId || !message.channelId) return;
     if (deletedByMe.has(message.id)) {
       deletedByMe.delete(message.id);
@@ -395,7 +393,29 @@ module.exports = async (client = Client.prototype) => {
     }
   });
 
-  client.on(Events.Error, err => {
+  client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
+    if (
+      !newMessage.guildId ||
+      newMessage.author?.bot ||
+      oldMessage?.content === newMessage?.content
+    )
+      return;
+
+    const config = await Servers.findOne({ id: newMessage.guildId });
+    if (!config) return;
+
+    const isCounting = config.counting?.channel === newMessage.channelId;
+
+    const isWordStory = config.wordStory?.channel === newMessage.channelId;
+
+    if (!isCounting && !isWordStory) return;
+
+    try {
+      await newMessage.react("✏️");
+    } catch (_) {}
+  });
+
+  client.on(Events.Error, (err) => {
     console.error(err);
   });
 };

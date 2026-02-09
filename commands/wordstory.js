@@ -14,11 +14,11 @@ const data = new SlashCommandBuilder()
   .setDescription("Util | Configure the word story channel")
   .setContexts(InteractionContextType.Guild)
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
-  .addSubcommand(sub =>
+  .addSubcommand((sub) =>
     sub
       .setName("channel")
       .setDescription("Set the word story channel")
-      .addChannelOption(opt =>
+      .addChannelOption((opt) =>
         opt
           .setName("target")
           .setDescription("Channel for the word story")
@@ -26,11 +26,11 @@ const data = new SlashCommandBuilder()
           .setRequired(true)
       )
   )
-  .addSubcommand(sub =>
+  .addSubcommand((sub) =>
     sub
       .setName("words-per-user")
       .setDescription("Set words allowed per user")
-      .addIntegerOption(opt =>
+      .addIntegerOption((opt) =>
         opt
           .setName("words")
           .setDescription("Words allowed per user")
@@ -39,11 +39,16 @@ const data = new SlashCommandBuilder()
           .setRequired(true)
       )
   )
-  .addSubcommand(sub =>
+  .addSubcommand((sub) =>
     sub.setName("disable").setDescription("Disable the word story")
   )
-  .addSubcommand(sub =>
+  .addSubcommand((sub) =>
     sub.setName("view").setDescription("View the full word story")
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("clear")
+      .setDescription("Clear and remove every word from the word story")
   );
 
 const run = async (interaction = ChatInputCommandInteraction.prototype) => {
@@ -103,7 +108,7 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
           flags: "Ephemeral",
         });
 
-      const story = messages.map(m => m.content).join(" ");
+      const story = messages.map((m) => m.content).join(" ");
 
       embed
         .setTitle("📖 Word Story")
@@ -133,6 +138,26 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
       embed
         .setTitle("✅ Word Story Disabled")
         .setDescription("The word story has been disabled");
+      break;
+    }
+
+    case "clear": {
+      if (
+        serverConfig.wordStory.messages &&
+        serverConfig.wordStory.messages.length < 1
+      )
+        return interaction.reply({
+          content: "❌ Word story is empty",
+          flags: "Ephemeral",
+        });
+
+      serverConfig.wordStory.lastUser = null;
+      serverConfig.wordStory.messages = [];
+      await serverConfig.save();
+
+      embed
+        .setTitle("✅ Word Story Cleared")
+        .setDescription("The word story has been cleared");
       break;
     }
 
