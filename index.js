@@ -100,29 +100,3 @@ connect(process.env.mongo_uri).then(() =>
 
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
-
-if (String(process.env.ddeBot || "false") === "true") {
-  // bot folder should be at ./ddebot/
-  // inside of that folder, there's ddebot/discord-bot with bot.js and deploy-commands.js
-
-  const { spawn } = require("child_process");
-  const ddeBotDir = path.join(__dirname, "ddebot", "discord-bot");
-
-  const deploy = spawn("node", ["deploy-commands.js"], { cwd: ddeBotDir, stdio: "inherit" });
-
-  deploy.on("close", (code) => {
-    if (code !== 0) {
-      console.error(`❌ ddebot deploy-commands.js failed with exit code ${code}`);
-      return;
-    }
-
-    console.log("✅ ddebot commands deployed, starting bot...");
-
-    const bot = spawn("node", ["bot.js"], { cwd: ddeBotDir, stdio: "inherit" });
-
-    bot.on("error", (err) => console.error("❌ Failed to start ddebot:", err));
-    bot.on("close", (code) => console.log(`✨ ddebot exited with code ${code}`));
-  });
-
-  deploy.on("error", (err) => console.error("❌ Failed to run ddebot deploy-commands.js:", err));
-}
