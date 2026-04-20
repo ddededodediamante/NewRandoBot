@@ -56,8 +56,7 @@ async function run(interaction = ChatInputCommandInteraction.prototype) {
   const effect = interaction.options.getString("effect");
   const attachment = interaction.options.getAttachment("image");
   const user = interaction.options.getUser("user");
-  const text =
-    interaction.options.getString("text") || user?.globalName || "Text!";
+  const text = interaction.options.getString("text");
 
   let targetUrl;
   if (attachment) {
@@ -97,7 +96,7 @@ async function run(interaction = ChatInputCommandInteraction.prototype) {
       const sizeMB = (inputBuffer.length / (1024 * 1024)).toFixed(2);
 
       return interaction.editReply({
-        content: `❌ File too large (${sizeMB} MB). Max allowed is 25 MB`,
+        content: `❌ File too large (${sizeMB} MB). Max allowed is 8 MB`,
       });
     }
 

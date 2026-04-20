@@ -1,7 +1,7 @@
 const { toValidPath } = require("./path");
 const { createCanvas, loadImage } = require("@napi-rs/canvas");
 
-function drawTextInBox(ctx, text, box, color = "#000") {
+function drawTextInBox(ctx, text, box, color = "#000", initialSize = 35) {
   ctx.save();
   ctx.textBaseline = "middle";
   ctx.textAlign = "center";
@@ -61,7 +61,7 @@ function drawTextInBox(ctx, text, box, color = "#000") {
     return out;
   }
 
-  let fontPx = 35;
+  let fontPx = initialSize ?? 35;
   let lines = [];
   let lineHeightPx = 0;
   while (fontPx >= 10) {
@@ -114,6 +114,19 @@ function drawTextInBox(ctx, text, box, color = "#000") {
   ctx.restore();
 
   return { fontPx, lines, clipped };
+}
+
+function drawImageCircle(ctx, image, x, y, w, h) {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const radius = Math.min(w, h) / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.drawImage(image, x, y, w, h);
+  ctx.restore();
 }
 
 async function ddeShirt(buffer) {
@@ -656,9 +669,75 @@ async function lisaPresentation(buffer, text) {
 
   drawTextInBox(
     ctx,
-    text,
+    text || "1 + 1 = fish",
     { x: 118, y: 78, w: 383, h: 150 }
   );
+
+  return canvas.toBuffer("image/png");
+}
+
+async function ohioImpressed(buffer, text) {
+  const image = await loadImage(buffer);
+  const background = await loadImage(toValidPath("../images/impressed.png"));
+
+  const canvas = createCanvas(500, 500);
+  const ctx = canvas.getContext("2d");
+
+  ctx.drawImage(background, 0, 0, 500, 500);
+  ctx.drawImage(image, (500 - 300) / 2, (500 - 300) / 2, 300, 300);
+
+  ctx.shadowColor = "#00aaff";
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = "#00cfff";
+  ctx.strokeStyle = "#80dfff";
+
+  drawTextInBox(
+    ctx,
+    "*" + (text || "Ohio Impressed") + "*",
+    { x: 10, w: 480, y: 410, h: 80 },
+    "#00cfff",
+    80
+  );
+
+  return canvas.toBuffer("image/png");
+}
+
+async function classified(buffer) {
+  const image = await loadImage(buffer);
+  const stamp = await loadImage(toValidPath("../images/classified.png"));
+
+  const canvas = createCanvas(image.width, image.height);
+  const ctx = canvas.getContext("2d");
+
+  ctx.drawImage(image, 0, 0);
+
+  const margin = Math.min(image.width, image.height) * 0.1;
+  const maxW = image.width - margin * 2;
+  const maxH = image.height - margin * 2;
+
+  const scale = Math.min(maxW / stamp.width, maxH / stamp.height);
+  const stampW = stamp.width * scale;
+  const stampH = stamp.height * scale;
+
+  const stampX = (image.width - stampW) / 2;
+  const stampY = (image.height - stampH) / 2;
+
+  ctx.globalAlpha = 0.8;
+  ctx.drawImage(stamp, stampX, stampY, stampW, stampH);
+  ctx.globalAlpha = 1.0;
+
+  return canvas.toBuffer("image/png");
+}
+
+async function ourLittleComedian(buffer) {
+  const image = await loadImage(buffer);
+  const background = await loadImage(toValidPath("../images/cornball.png"));
+
+  const canvas = createCanvas(background.width, background.height);
+  const ctx = canvas.getContext("2d");
+
+  ctx.drawImage(background, 0, 0);
+  drawImageCircle(ctx, image, 239, 234, 175, 176);
 
   return canvas.toBuffer("image/png");
 }
@@ -694,4 +773,6 @@ module.exports = {
   darken,
   cat,
   lisaPresentation,
+  ohioImpressed,
+  ourLittleComedian
 };
