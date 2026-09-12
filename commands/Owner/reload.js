@@ -33,8 +33,8 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
       flags: "Ephemeral",
     });
 
-  delete require.cache[require.resolve("../functions/events")];
-  const setupEvents = require("../functions/events");
+delete require.cache[require.resolve("../../functions/events")];
+const setupEvents = require("../../functions/events");
 
   client.loadCommands();
   setupEvents(client);

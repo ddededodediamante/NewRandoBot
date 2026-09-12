@@ -8,7 +8,7 @@ const {
 } = require("discord.js");
 const ms = require("ms");
 
-const TempBan = require("../models/tempBanSchema");
+const TempBan = require("../../models/tempBanSchema");
 
 const data = new SlashCommandBuilder()
   .setName("ban")

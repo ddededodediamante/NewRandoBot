@@ -4,7 +4,7 @@ const {
   InteractionContextType,
   ChatInputCommandInteraction,
 } = require("discord.js");
-const Users = require("../models/userSchema.js");
+const Users = require("../../models/userSchema.js");
 
 const data = new SlashCommandBuilder()
   .setName("balance")

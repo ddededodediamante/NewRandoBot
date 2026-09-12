@@ -6,6 +6,7 @@ const {
   inlineCode,
 } = require("discord.js");
 const Servers = require("../models/serverSchema.js");
+const { helpPages, buildEmbed, buildRow } = require("../commands/Bot/help.js");
 
 delete require.cache[require.resolve("./imageEffects")];
 const imageEffects = require("./imageEffects");
@@ -75,6 +76,36 @@ module.exports = async (client = Client.prototype) => {
         return await interaction.respond(
           choices.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 25)
         );
+      }
+
+      if (interaction.isButton()) {
+        if (!["help_prev", "help_next"].includes(interaction.customId)) return;
+
+        const data = helpPages.get(interaction.message.id);
+        if (!data) return;
+
+        if (interaction.user.id !== data.userId) {
+          return interaction.reply({
+            content: "❌ Not your help menu!",
+            flags: "Ephemeral",
+          });
+        }
+
+        if (interaction.customId === "help_prev" && data.pageIndex > 0) {
+          data.pageIndex--;
+        } else if (
+          interaction.customId === "help_next" &&
+          data.pageIndex < data.pages.length - 1
+        ) {
+          data.pageIndex++;
+        } else {
+          return;
+        }
+
+        return await interaction.update({
+          embeds: [buildEmbed(data.pageIndex, data.pages)],
+          components: [buildRow(data.pageIndex, data.pages)],
+        });
       }
 
       if (

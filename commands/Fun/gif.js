@@ -7,17 +7,17 @@ const {
   MediaGalleryBuilder,
   MediaGalleryItemBuilder,
   TextDisplayBuilder,
-  ContainerBuilder,
   MessageFlags,
+  ContainerBuilder,
 } = require("discord.js");
 const { default: axios } = require("axios");
 
-delete require.cache[require.resolve("../functions/imageEffects")];
-const effects = require("../functions/imageEffects");
+const { enqueueGifJob, getQueueLength } = require("../../functions/gifQueue");
+const effects = require("../../functions/gifEffects");
 
 const data = new SlashCommandBuilder()
-  .setName("image")
-  .setDescription("Fun | Generate an image with effects")
+  .setName("gif")
+  .setDescription("Fun | Generate a GIF with effects")
   .setContexts(
     InteractionContextType.BotDM,
     InteractionContextType.Guild,
@@ -37,7 +37,7 @@ const data = new SlashCommandBuilder()
   .addAttachmentOption((option) =>
     option
       .setName("image")
-      .setDescription("The image or GIF (static) to use")
+      .setDescription("The image or GIF to use")
       .setRequired(false)
   )
   .addUserOption((option) =>
@@ -45,37 +45,37 @@ const data = new SlashCommandBuilder()
       .setName("user")
       .setDescription("The user to use as an image")
       .setRequired(false)
-  )
-  .addStringOption((option) =>
-    option.setName("text").setDescription("Optional text some effects need")
   );
 
+function isLinkGIF(link = "") {
+  const parts = link.split("/");
+  const lastPart = parts[parts.length - 1];
+  const filename = lastPart.split("?")[0];
+  return filename.toLowerCase().endsWith(".gif");
+}
+
 async function run(interaction = ChatInputCommandInteraction.prototype) {
-  const MAX_INPUT_BYTES = 8 * 1024 * 1024;
+  const MAX_INPUT_BYTES = 16 * 1024 * 1024;
 
   const effect = interaction.options.getString("effect");
   const attachment = interaction.options.getAttachment("image");
   const user = interaction.options.getUser("user");
-  const text = interaction.options.getString("text");
 
   let targetUrl;
-  if (attachment) {
-    targetUrl = attachment.url;
-  } else if (user) {
-    targetUrl = user.displayAvatarURL({
-      forceStatic: true,
-      extension: "png",
-      size: 512,
-    });
-  } else if (interaction.client.imageCache.has(interaction.user.id)) {
+  let isGif = false;
+
+  if (attachment) targetUrl = attachment.url;
+  else if (user) targetUrl = user.displayAvatarURL({ size: 512 });
+  else if (interaction.client.imageCache.has(interaction.user.id)) {
     targetUrl = interaction.client.imageCache.get(interaction.user.id);
     interaction.client.imageCache.delete(interaction.user.id);
-  } else {
+  } else
     return interaction.reply({
-      content: '❌ You must specify one between "image" or "user"',
+      content: '❌ You must specify either "image" or "user"',
       flags: "Ephemeral",
     });
-  }
+
+  isGif = isLinkGIF(targetUrl);
 
   if (typeof effects[effect] !== "function") {
     return interaction.reply({
@@ -96,31 +96,67 @@ async function run(interaction = ChatInputCommandInteraction.prototype) {
       const sizeMB = (inputBuffer.length / (1024 * 1024)).toFixed(2);
 
       return interaction.editReply({
-        content: `❌ File too large (${sizeMB} MB). Max allowed is 8 MB`,
+        content: `❌ File too large (${sizeMB} MB). Max allowed is 16 MB`,
       });
     }
 
-    const resultBuffer = await effects[effect](inputBuffer, text);
+    const queueSize = getQueueLength();
 
-    const outputSizeBytes = resultBuffer.length;
+    if (queueSize >= 5) {
+      return interaction.editReply({
+        content: "❌ The GIF processor is busy, please try again in a moment",
+      });
+    } else if (queueSize >= 2) {
+      await interaction.editReply(
+        `⏳ Added to queue, your GIF will be processed soon.`
+      );
+    }
+
+    const workerResult = await enqueueGifJob({
+      buffer: inputBuffer,
+      effect,
+      isGif,
+    });
+
+    if (!workerResult) {
+      return interaction.editReply({
+        content: "❌ There was an error while processing the GIF",
+      });
+    }
+
+    if (workerResult.result === "only_gif") {
+      return interaction.editReply({
+        content: "❌ Only GIF files are supported for this effect",
+      });
+    }
+
+    const gifBuffer = Buffer.isBuffer(workerResult.result)
+      ? workerResult.result
+      : Buffer.from(workerResult.result);
+
+    const outputSizeBytes = gifBuffer.length;
     const outputSizeKB = (outputSizeBytes / 1024).toFixed(1);
     const outputSizeMB = (outputSizeBytes / (1024 * 1024)).toFixed(2);
 
+    const fileName = "output.gif";
+    const file = new AttachmentBuilder(gifBuffer, { name: fileName });
+
+    const processTime = (Number(workerResult.timeMs ?? 0) / 1000).toFixed(2);
+
     const mediaGallery = new MediaGalleryBuilder().addItems(
-      new MediaGalleryItemBuilder().setURL(`attachment://output.png`)
+      new MediaGalleryItemBuilder().setURL(`attachment://${fileName}`)
     );
 
-    const textDisplay = new TextDisplayBuilder().setContent(
+    const text = new TextDisplayBuilder().setContent(
       `-# ${effect.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()} | ${
         outputSizeMB < 1 ? `${outputSizeKB} KB` : `${outputSizeMB} MB`
-      }`
+      } | took ${processTime}s`
     );
 
     const container = new ContainerBuilder()
       .addMediaGalleryComponents(mediaGallery)
-      .addTextDisplayComponents(textDisplay);
+      .addTextDisplayComponents(text);
 
-    const file = new AttachmentBuilder(resultBuffer, { name: "output.png" });
     return interaction.editReply({
       components: [container],
       files: [file],
@@ -131,7 +167,7 @@ async function run(interaction = ChatInputCommandInteraction.prototype) {
     const method =
       interaction.deferred || interaction.replied ? "followUp" : "reply";
     return interaction[method]({
-      content: "❌ There was an error while processing the image",
+      content: "❌ There was an error while processing the GIF",
       flags: "Ephemeral",
     });
   }

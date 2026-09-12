@@ -6,7 +6,7 @@ const {
   InteractionContextType,
 } = require("discord.js");
 const { createCanvas, loadImage } = require("@napi-rs/canvas");
-const { toValidPath } = require("../functions/path");
+const { toValidPath } = require("../../functions/path");
 
 const data = new SlashCommandBuilder()
   .setName("ship")

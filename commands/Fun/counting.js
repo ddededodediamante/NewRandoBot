@@ -7,7 +7,7 @@ const {
   ChannelType,
   PermissionsBitField,
 } = require("discord.js");
-const Server = require("../models/serverSchema.js");
+const Server = require("../../models/serverSchema.js");
 
 const data = new SlashCommandBuilder()
   .setName("counting")

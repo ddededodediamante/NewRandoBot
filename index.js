@@ -27,23 +27,32 @@ function reload(modulePath) {
 function loadCommands() {
   client.commands = new Collection();
   const commandsPath = path.join(__dirname, "commands");
-  const commandFiles = fs
-    .readdirSync(commandsPath)
-    .filter((f) => f.endsWith(".js"));
 
-  for (const file of commandFiles) {
-    const fullPath = path.join(commandsPath, file);
-    try {
-      const cmd = reload(fullPath);
-      if (cmd.data?.name && typeof cmd.run === "function") {
-        client.commands.set(cmd.data.name, cmd);
-      } else {
-        console.warn(`Skipping ${file}: missing data.name or run()`);
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        walk(fullPath);
+        continue;
       }
-    } catch (err) {
-      console.error(`Error loading ${file}:`, err);
+      if (!entry.name.endsWith(".js")) continue;
+
+      try {
+        const cmd = reload(fullPath);
+        if (cmd.data?.name && typeof cmd.run === "function") {
+          cmd.category = path.basename(dir);
+          client.commands.set(cmd.data.name, cmd);
+        } else {
+          console.warn(`Skipping ${entry.name}: missing data.name or run()`);
+        }
+      } catch (err) {
+        console.error(`Error loading ${entry.name}:`, err);
+      }
     }
-  }
+  };
+
+  walk(commandsPath);
 }
 client.loadCommands = loadCommands;
 

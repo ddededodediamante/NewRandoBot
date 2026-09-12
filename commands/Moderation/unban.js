@@ -7,7 +7,7 @@ const {
   PermissionsBitField,
 } = require("discord.js");
 
-const TempBan = require("../models/tempBanSchema");
+const TempBan = require("../../models/tempBanSchema");
 
 const data = new SlashCommandBuilder()
   .setName("unban")
