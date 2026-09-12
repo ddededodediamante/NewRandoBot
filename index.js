@@ -50,7 +50,7 @@ client.loadCommands = loadCommands;
 async function registerSlashCommands() {
   try {
     const rest = new REST({ version: "10" }).setToken(
-      isTest ? process.env.test_token : process.env.token
+      isTest ? process.env.test_token : process.env.token,
     );
     await rest.put(Routes.applicationCommands(client.user.id), {
       body: client.commands.map((c) => c.data.toJSON()),
@@ -95,8 +95,22 @@ client
 const { connect } = require("mongoose");
 
 connect(process.env.mongo_uri).then(() =>
-  console.log("✅ Connected to the database")
+  console.log("✅ Connected to the database"),
 );
 
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
+
+if (!isTest) {
+  const express = require("express");
+  const app = express();
+  const PORT = 3000;
+
+  app.get("/", (req, res) => {
+    res.status(200).send("Hello World!");
+  });
+
+  app.listen(PORT, () => {
+    console.log(`✅ Listening to port ${PORT}`);
+  });
+}
