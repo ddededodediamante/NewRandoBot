@@ -7,6 +7,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  inlineCode,
 } = require("discord.js");
 
 const MAX_COMMANDS_PER_PAGE = 10;
@@ -14,22 +15,22 @@ const MAX_COMMANDS_PER_PAGE = 10;
 const data = new SlashCommandBuilder()
   .setName("help")
   .setDescription(
-    "Bot | Shows a list of all commands or details of a specific command"
+    "Bot | Shows a list of all commands or details of a specific command",
   )
   .addStringOption((option) =>
     option
       .setName("command")
       .setDescription("The specific command you want help with")
-      .setRequired(false)
+      .setRequired(false),
   )
   .setContexts(
     InteractionContextType.BotDM,
     InteractionContextType.Guild,
-    InteractionContextType.PrivateChannel
+    InteractionContextType.PrivateChannel,
   )
   .setIntegrationTypes(
     ApplicationIntegrationType.GuildInstall,
-    ApplicationIntegrationType.UserInstall
+    ApplicationIntegrationType.UserInstall,
   );
 
 const optionTypeValues = {
@@ -51,13 +52,13 @@ const helpPages = new Map();
 function cleanDescription(description) {
   return (description ?? "No description available.").replace(
     /^[^|]*\|\s*/,
-    ""
+    "",
   );
 }
 
 function buildEmbed(index, pages) {
   const embed = new EmbedBuilder()
-    .setTitle("📚 Available Commands")
+    .setTitle("📚 Commands List")
     .setFooter({ text: `Page ${index + 1} of ${pages.length}` });
 
   const groups = {};
@@ -93,7 +94,9 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
   const { client } = interaction;
   const commandName = interaction.options.getString("command");
 
-  const commands = Array.from(client.commands.values());
+  const commands = Array.from(client.commands.values()).filter(
+    (command) => command.category !== "Owner",
+  );
 
   if (commandName) {
     const command = commands.find((c) => c.data.name === commandName);
@@ -125,13 +128,13 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
             (i) =>
               `→ **${i.name}** (${
                 optionTypeValues[Number(i.type)] ?? "Unknown"
-              }) - ${i?.description ?? "No description available."}`
+              }) - ${i?.description ?? "No description available."}`,
           )
           .join("\n"),
       });
     }
 
-    return await interaction.reply({ embeds: [embed], flags: "Ephemeral" });
+    return await interaction.reply({ embeds: [embed] });
   }
 
   const byCategory = new Map();
@@ -141,15 +144,15 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
     if (!byCategory.has(cat)) byCategory.set(cat, []);
     byCategory.get(cat).push({
       name: command.data.name,
-      text: `**/${command.data.name}** - ${cleanDescription(
-        command.data.description
+      text: `- ${inlineCode("/" + command.data.name)}: ${cleanDescription(
+        command.data.description,
       )}`,
     });
   }
 
   const allEntries = [];
   for (const [cat, entries] of [...byCategory.entries()].sort(([a], [b]) =>
-    a.localeCompare(b)
+    a.localeCompare(b),
   )) {
     entries.sort((a, b) => a.name.localeCompare(b.name));
     for (const entry of entries) {
@@ -172,7 +175,6 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
   const reply = await interaction.reply({
     embeds: [buildEmbed(0, pages)],
     components: pages.length > 1 ? [buildRow(0, pages)] : [],
-    flags: "Ephemeral",
   });
 
   if (pages.length > 1) {
