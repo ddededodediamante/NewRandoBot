@@ -7,6 +7,7 @@ const {
 } = require("discord.js");
 const Servers = require("../models/serverSchema.js");
 const { helpPages, buildEmbed, buildRow } = require("../commands/Bot/help.js");
+const { sendLog, formatError } = require("./utils.js");
 
 delete require.cache[require.resolve("./imageEffects")];
 const imageEffects = require("./imageEffects");
@@ -34,15 +35,26 @@ module.exports = async (client = Client.prototype) => {
           },
         });
         console.log(
-          `✅ Created config for new guild: ${guild.name} (${guild.id})`
+          `✅ Created config for new guild: ${guild.name} (${guild.id})`,
         );
+        await sendLog(client, {
+          title: "Config created for new guild",
+          description: `**Guild:** ${guild.name} (\`${guild.id}\`)`,
+          color: "Green",
+        });
       } else {
         console.log(
-          `ℹ️ Guild already exists in DB: ${guild.name} (${guild.id})`
+          `ℹ️ Guild already exists in DB: ${guild.name} (${guild.id})`,
         );
       }
     } catch (err) {
       console.error(`❌ Failed to create config for guild ${guild.id}:`, err);
+      await sendLog(client, {
+        title: "Failed to create guild config",
+        description: `**Guild:** ${guild.name} (\`${guild.id}\`)`,
+        fields: [{ name: "Error", value: inlineCode(formatError(err)) }],
+        color: "Red",
+      });
     }
   });
 
@@ -60,7 +72,7 @@ module.exports = async (client = Client.prototype) => {
           }));
 
           choices = initialChoices.filter((choice) =>
-            choice.name.includes(focused.toLowerCase())
+            choice.name.includes(focused.toLowerCase()),
           );
         } else if (interaction.commandName === "gif") {
           let initialChoices = Object.keys(gifEffects).map((key) => ({
@@ -69,12 +81,12 @@ module.exports = async (client = Client.prototype) => {
           }));
 
           choices = initialChoices.filter((choice) =>
-            choice.name.includes(focused.toLowerCase())
+            choice.name.includes(focused.toLowerCase()),
           );
         }
 
         return await interaction.respond(
-          choices.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 25)
+          choices.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 25),
         );
       }
 
@@ -125,6 +137,14 @@ module.exports = async (client = Client.prototype) => {
         return await command.run(interaction);
       } catch (error) {
         console.error(error);
+        await sendLog(client, {
+          title: "Command error",
+          description: `**Command:** \`${interaction.commandName}\`\n**User:** ${
+            interaction.user?.tag ?? "unknown"
+          }\n**Guild:** ${interaction.guild?.name ?? "DM"}`,
+          fields: [{ name: "Error", value: inlineCode(formatError(error)) }],
+          color: "Red",
+        });
         const method =
           interaction.deferred || interaction.replied ? "followUp" : "reply";
         return interaction[method]({
@@ -132,7 +152,7 @@ module.exports = async (client = Client.prototype) => {
           flags: "Ephemeral",
         });
       }
-    }
+    },
   );
 
   client.on(Events.GuildMemberAdd, async (member = GuildMember.prototype) => {
@@ -199,7 +219,7 @@ module.exports = async (client = Client.prototype) => {
       } catch (error) {
         console.error("Failed to send farewell message:", error);
       }
-    }
+    },
   );
 
   const deletedByMe = new Set();
@@ -234,7 +254,7 @@ module.exports = async (client = Client.prototype) => {
           $set: {
             "wordStory.lastUser": message.author.id,
           },
-        }
+        },
       );
 
       return await message.react("✅").catch(() => {});
@@ -265,7 +285,7 @@ module.exports = async (client = Client.prototype) => {
             mistakeThreadId = thread.id;
             await Servers.updateOne(
               { id: message.guildId },
-              { $set: { "counting.mistakeThreadId": mistakeThreadId } }
+              { $set: { "counting.mistakeThreadId": mistakeThreadId } },
             );
           } catch (err) {
             console.error("Could not create mistakes thread:", err);
@@ -321,7 +341,7 @@ module.exports = async (client = Client.prototype) => {
               "counting.count": expected,
               "counting.lastUser": message.author.id,
             },
-          }
+          },
         );
         return await message.react("✅").catch(() => {});
       }
@@ -329,7 +349,7 @@ module.exports = async (client = Client.prototype) => {
       if (resetOnWrong) {
         await Servers.updateOne(
           { id: message.guildId },
-          { $set: { "counting.count": 0, "counting.lastUser": null } }
+          { $set: { "counting.count": 0, "counting.lastUser": null } },
         );
         if (
           message.channel
@@ -337,7 +357,7 @@ module.exports = async (client = Client.prototype) => {
             .has("SendMessages")
         )
           await message.reply(
-            `❌ Wrong number! Count has been reset. The next number is **1**.`
+            `❌ Wrong number! Count has been reset. The next number is **1**.`,
           );
         if (!message.deletable) message.react("🔄").catch(() => {});
         else {
@@ -362,11 +382,11 @@ module.exports = async (client = Client.prototype) => {
       if (!sentInThread) {
         try {
           await message.author.send(
-            `❌ In <#${message.channelId}>, you sent **${got}**, but the next number should be **${expected}**.`
+            `❌ In <#${message.channelId}>, you sent **${got}**, but the next number should be **${expected}**.`,
           );
         } catch (err) {
           console.warn(
-            `Failed to DM user ${message.author.tag} for counting mistake`
+            `Failed to DM user ${message.author.tag} for counting mistake`,
           );
         }
       }

@@ -79,6 +79,13 @@ client.getEmoji = (emojiName) => {
 client.once(Events.ClientReady, async () => {
   console.log("✅ Client ready as " + client.user.tag);
 
+  const { sendLog } = require("./functions/utils.js");
+  await sendLog(client, {
+    title: "Client online",
+    description: `${client.user.tag} is ready in ${client.guilds.cache.size} guilds.`,
+    color: "Green",
+  });
+
   try {
     const reloadEvents = reload("./functions/events.js");
     reloadEvents(client);
