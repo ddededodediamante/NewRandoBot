@@ -14,6 +14,7 @@ const data = new SlashCommandBuilder()
   .setDescription("Util | Farewell new users with custom messages")
   .setContexts(InteractionContextType.Guild)
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
   .addSubcommand((sub) =>
     sub
       .setName("channel")

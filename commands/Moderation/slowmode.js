@@ -13,6 +13,7 @@ const data = new SlashCommandBuilder()
   .setDescription("Moderation | Sets or disables slowmode in a channel")
   .setContexts(InteractionContextType.Guild)
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageChannels)
   .addStringOption((option) =>
     option
       .setName("duration")

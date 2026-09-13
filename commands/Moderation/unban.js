@@ -14,6 +14,7 @@ const data = new SlashCommandBuilder()
   .setDescription("Moderation | Unbans a user")
   .setContexts(InteractionContextType.Guild)
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.BanMembers)
   .addStringOption(option =>
     option
       .setName("user")

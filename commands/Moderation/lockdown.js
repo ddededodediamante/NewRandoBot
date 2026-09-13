@@ -15,6 +15,7 @@ const data = new SlashCommandBuilder()
   .setDescription("Moderation | Locks or unlocks a channel")
   .setContexts(InteractionContextType.Guild)
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageChannels)
   .addSubcommand((sub) =>
     sub
       .setName("enable")

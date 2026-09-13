@@ -14,6 +14,7 @@ const data = new SlashCommandBuilder()
   .setDescription("Fun | Create a counting channel")
   .setContexts(InteractionContextType.Guild)
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
   .addSubcommand((sub) =>
     sub
       .setName("channel")

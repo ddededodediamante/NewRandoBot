@@ -12,6 +12,7 @@ const data = new SlashCommandBuilder()
   .setDescription("Moderation | Kicks a member from the server")
   .setContexts(InteractionContextType.Guild)
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.KickMembers)
   .addUserOption((option) =>
     option.setName("target").setDescription("The member to kick").setRequired(true)
   )

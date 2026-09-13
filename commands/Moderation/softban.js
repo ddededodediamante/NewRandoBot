@@ -15,6 +15,7 @@ const data = new SlashCommandBuilder()
   )
   .setContexts(InteractionContextType.Guild)
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.BanMembers)
   .addUserOption((option) =>
     option
       .setName("target")

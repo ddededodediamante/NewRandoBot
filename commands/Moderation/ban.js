@@ -15,6 +15,7 @@ const data = new SlashCommandBuilder()
   .setDescription("Moderation | Bans a member permanently or temporarily")
   .setContexts(InteractionContextType.Guild)
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.BanMembers)
   .addUserOption(option =>
     option
       .setName("target")

@@ -12,6 +12,7 @@ const data = new SlashCommandBuilder()
   .setDescription("Moderation | Deletes multiple messages")
   .setContexts(InteractionContextType.Guild)
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageMessages)
   .addIntegerOption((option) =>
     option
       .setName("count")

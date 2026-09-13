@@ -14,6 +14,7 @@ const data = new SlashCommandBuilder()
   .setDescription("Moderation | Timeout a member for a set duration")
   .setContexts(InteractionContextType.Guild)
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers)
   .addUserOption((opt) =>
     opt
       .setName("target")

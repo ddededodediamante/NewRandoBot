@@ -12,6 +12,7 @@ const data = new SlashCommandBuilder()
   .setDescription("Moderation | Sets or clears a member's nickname")
   .setContexts(InteractionContextType.Guild)
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageNicknames)
   .addSubcommand((sub) =>
     sub
       .setName("set")
