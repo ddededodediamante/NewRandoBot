@@ -32,6 +32,9 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
 
   try {
     const response = await axios.get(apiNasaUrl, { responseType: "json" });
+    if (!response?.data?.collection?.items) 
+      return await interaction.reply("❌ No images found for your query");
+
     const items = response.data.collection.items;
     const images = items.filter((i) => i.data[0].media_type === "image");
     const media = images[Math.floor(Math.random() * images.length)];

@@ -4,6 +4,7 @@ const {
   InteractionContextType,
   ChatInputCommandInteraction,
 } = require("discord.js");
+const crypto = require("crypto");
 
 const data = new SlashCommandBuilder()
   .setName("ddededodediamante")
@@ -11,20 +12,15 @@ const data = new SlashCommandBuilder()
   .setContexts(
     InteractionContextType.BotDM,
     InteractionContextType.Guild,
-    InteractionContextType.PrivateChannel
+    InteractionContextType.PrivateChannel,
   )
   .setIntegrationTypes(
     ApplicationIntegrationType.GuildInstall,
-    ApplicationIntegrationType.UserInstall
+    ApplicationIntegrationType.UserInstall,
   )
   .addUserOption((option) =>
-    option.setName("target").setDescription("User to check").setRequired(false)
+    option.setName("target").setDescription("User to check").setRequired(false),
   );
-
-const users = {
-  "694587798598058004": 100,
-  "777073744203743253": 100,
-};
 
 const getMessage = (percent) => {
   if (percent === 100) return "they might be ddededodediamante";
@@ -37,18 +33,24 @@ const getMessage = (percent) => {
   return "not even CLOSE";
 };
 
+function getPercent(id) {
+  const hash = crypto.createHash("sha256").update(id).digest();
+  const num = hash.readUInt32BE(0);
+  return num % 101;
+}
+
 const run = async (interaction = ChatInputCommandInteraction.prototype) => {
   const targetUser = interaction.options.getUser("target") || interaction.user;
-
-  if (!users[targetUser.id]) {
+  if (targetUser.id !== "694587798598058004") {
     users[targetUser.id] = Math.floor(Math.random() * 101);
   }
 
-  const percent = users[targetUser.id];
+  const percent =
+    targetUser.id === "694587798598058004" ? 100 : getPercent(targetUser.id);
 
   await interaction.reply({
     content: `${targetUser.toString()} is ${percent}% a ddededodediamante (${getMessage(
-      percent
+      percent,
     )})`,
     allowedMentions: { parse: [] },
   });
