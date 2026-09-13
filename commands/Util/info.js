@@ -259,11 +259,20 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
         }
       }
 
+      const avatarURL = user.displayAvatarURL({ dynamic: true, size: 1024 });
+
       embed
         .setTitle(`${user.bot ? "Bot" : "User"} | ${user.tag}`)
-        .setThumbnail(user.displayAvatarURL({ dynamic: true }))
+        .setThumbnail(avatarURL)
+        .setDescription(`[Avatar Link](${avatarURL})`)
         .setFields(fields)
         .setFooter({ text: `ID: ${user.id}` });
+
+      if (fullUser.bannerURL?.()) {
+        embed.setImage(fullUser.bannerURL({ dynamic: true, size: 1024 }));
+      } else if (fullUser.accentColor) {
+        embed.setColor(fullUser.accentColor);
+      }
       break;
     }
     case "emoji": {

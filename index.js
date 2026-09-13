@@ -77,7 +77,7 @@ client.getEmoji = (emojiName) => {
 };
 
 client.once(Events.ClientReady, async () => {
-  console.log("✅ Client ready");
+  console.log("✅ Client ready as " + client.user.tag);
 
   try {
     const reloadEvents = reload("./functions/events.js");

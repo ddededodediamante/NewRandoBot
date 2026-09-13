@@ -31,7 +31,12 @@ const UserSchema = new mongoose.Schema({
         type: Date,
       },
     },
-    inventory: [String]
+    inventory: [String],
+    crime: {
+      lastCommitted: {
+        type: Date,
+      },
+    },
   },
   createdAt: {
     type: Date,
