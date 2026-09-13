@@ -99,6 +99,7 @@ client.once(Events.ClientReady, async () => {
   await client.application.emojis.fetch();
 
   require("./functions/tempBanChecker")(client);
+  require("./functions/lockdownChecker")(client);
 });
 
 client
