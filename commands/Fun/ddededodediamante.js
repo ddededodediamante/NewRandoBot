@@ -41,10 +41,6 @@ function getPercent(id) {
 
 const run = async (interaction = ChatInputCommandInteraction.prototype) => {
   const targetUser = interaction.options.getUser("target") || interaction.user;
-  if (targetUser.id !== "694587798598058004") {
-    users[targetUser.id] = Math.floor(Math.random() * 101);
-  }
-
   const percent =
     targetUser.id === "694587798598058004" ? 100 : getPercent(targetUser.id);
 

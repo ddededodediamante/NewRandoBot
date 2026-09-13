@@ -8,6 +8,12 @@ const {
 const data = new SlashCommandBuilder()
   .setName("8ball")
   .setDescription("Fun | Ask the 8 ball a question")
+  .addStringOption((option) =>
+    option
+      .setName("question")
+      .setDescription("The question you want to ask the 8 ball")
+      .setRequired(true),
+  )
   .setContexts(
     InteractionContextType.BotDM,
     InteractionContextType.Guild,
@@ -23,14 +29,26 @@ const answers = {
   "no": ["no", "nope", "not at all", "NO!!", "❌", "fact checked false by me", "breaking news: no", "nuh uh", "https://klipy.com/gifs/lie-lie-detector"]
 };
 
-function getRandom(arr) {
-  const randomIndex = Math.floor(Math.random() * arr.length);
-  return arr[randomIndex];
+function hashString(str) {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 33) ^ str.charCodeAt(i);
+  }
+  return hash >>> 0;
+}
+
+function getDeterministic(arr, seed) {
+  const index = seed % arr.length;
+  return arr[index];
 }
 
 const run = async (interaction = ChatInputCommandInteraction.prototype) => {
-  const category = Math.random() > 0.5 ? "yes" : "no";
-  const answer = getRandom(answers[category]);
+  const question = interaction.options.getString("question").trim().toLowerCase();
+  const hash = hashString(question);
+
+  const category = hash % 2 === 0 ? "yes" : "no";
+  const answer = getDeterministic(answers[category], hash);
+
   await interaction.reply({
     content: answer,
     allowedMentions: { parse: [], repliedUser: true },
