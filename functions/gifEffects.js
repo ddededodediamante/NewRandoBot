@@ -1,7 +1,7 @@
 const { toValidPath } = require("./path");
-const { createCanvas, loadImage } = require("@napi-rs/canvas");
+const { createCanvas, loadImage, ImageData } = require("@napi-rs/canvas");
 const GIFEncoder = require("gif-encoder-2");
-const gifFrames = require("gif-frames");
+const sharp = require("sharp");
 
 if (typeof document === "undefined") {
   global.document = {
@@ -14,15 +14,54 @@ if (typeof document === "undefined") {
 const DEFAULT_QUALITY = 1;
 const MAX_OUTPUT_FRAMES = 30;
 
+async function decodeGifFrames(buffer) {
+  const img = sharp(buffer, { animated: true });
+  const meta = await img.metadata();
+  const { data } = await img
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const width = meta.width;
+  const height = meta.pageHeight ?? meta.height;
+  const pageCount = meta.pages ?? 1;
+  const delays = meta.delay ?? [];
+
+  const frameBytes = width * height * 4;
+
+  const frames = [];
+  for (let i = 0; i < pageCount; i++) {
+    const raw = data.subarray(i * frameBytes, (i + 1) * frameBytes);
+
+    frames.push({
+      _raw: raw,
+      _canvas: null,
+      frameInfo: {
+        width,
+        height,
+        delay: (delays[i] ?? 50) / 10,
+      },
+      async getImage() {
+        if (!this._canvas) {
+          const imageData = new ImageData(
+            new Uint8ClampedArray(this._raw),
+            width,
+            height,
+          );
+          const canvas = createCanvas(width, height);
+          canvas.getContext("2d").putImageData(imageData, 0, 0);
+          this._canvas = canvas;
+        }
+        return this._canvas;
+      },
+    });
+  }
+
+  return frames;
+}
+
 async function loadFrames(buffer, isGif) {
-  return isGif
-    ? await gifFrames({
-        url: buffer,
-        frames: "all",
-        outputType: "canvas",
-        cumulative: false,
-      })
-    : await loadImage(buffer);
+  return isGif ? await decodeGifFrames(buffer) : await loadImage(buffer);
 }
 
 function getFrameIndex(i, spriteCount, framesLength) {
