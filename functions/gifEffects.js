@@ -12,15 +12,16 @@ if (typeof document === "undefined") {
 }
 
 const DEFAULT_QUALITY = 1;
+const MAX_OUTPUT_FRAMES = 30;
 
 async function loadFrames(buffer, isGif) {
   return isGif
     ? await gifFrames({
-      url: buffer,
-      frames: "all",
-      outputType: "canvas",
-      cumulative: false,
-    })
+        url: buffer,
+        frames: "all",
+        outputType: "canvas",
+        cumulative: false,
+      })
     : await loadImage(buffer);
 }
 
@@ -34,12 +35,12 @@ function easeInOut(x) {
 }
 
 function createEncoder(width, height) {
-  const encoder = new GIFEncoder(width, height, "neuquant", true);
+  const encoder = new GIFEncoder(width, height, "octree", true);
   encoder.setRepeat(0);
   encoder.setQuality(DEFAULT_QUALITY);
   encoder.setThreshold(0);
   encoder.setPaletteSize(7);
-  encoder.sample = 1;
+  encoder.sample = 10;
   return encoder;
 }
 
@@ -49,7 +50,8 @@ async function rainbow(buffer, isGif) {
   const width = isGif ? frames[0].frameInfo.width : frames.width;
   const height = isGif ? frames[0].frameInfo.height : frames.height;
 
-  const framesLength = Array.isArray(frames) ? frames.length : 30;
+  const sourceFramesLength = Array.isArray(frames) ? frames.length : 30;
+  const framesLength = Math.min(sourceFramesLength, MAX_OUTPUT_FRAMES);
 
   const encoder = createEncoder(width, height);
   encoder.setDelay(isGif ? 0 : 60);
@@ -62,7 +64,10 @@ async function rainbow(buffer, isGif) {
   for (let i = 0; i < framesLength; i++) {
     ctx.clearRect(0, 0, width, height);
 
-    const frame = isGif ? await frames[i].getImage() : frames;
+    const sourceIndex = isGif
+      ? getFrameIndex(i, framesLength, sourceFramesLength)
+      : 0;
+    const frame = isGif ? await frames[sourceIndex].getImage() : frames;
 
     ctx.globalCompositeOperation = "source-over";
     ctx.drawImage(frame, 0, 0, width, height);
@@ -71,7 +76,8 @@ async function rainbow(buffer, isGif) {
     ctx.fillStyle = `hsl(${(i / framesLength) * 360}, 100%, 50%)`;
     ctx.fillRect(0, 0, width, height);
 
-    if (isGif) encoder.setDelay((frames[i].frameInfo.delay ?? 5) * 10);
+    if (isGif)
+      encoder.setDelay((frames[sourceIndex].frameInfo.delay ?? 5) * 10);
     encoder.addFrame(ctx);
   }
 
@@ -112,7 +118,7 @@ async function boykisser(buffer, isGif) {
       0,
       0,
       spriteWidth,
-      spriteHeight
+      spriteHeight,
     );
 
     ctx.drawImage(frame, 236, 16, 61, 31);
@@ -158,7 +164,7 @@ async function thanosReactThisMan(buffer, isGif) {
       0,
       0,
       spriteWidth,
-      spriteHeight
+      spriteHeight,
     );
 
     ctx.drawImage(frame, 211, 26, 77, 61);
@@ -172,7 +178,7 @@ async function thanosReactThisMan(buffer, isGif) {
 
 async function scaryAttack(buffer, isGif) {
   const spriteImage = await loadImage(
-    toValidPath("../images/scary-attack.png")
+    toValidPath("../images/scary-attack.png"),
   );
   const spriteWidth = 240;
   const spriteHeight = 300;
@@ -190,7 +196,7 @@ async function scaryAttack(buffer, isGif) {
   const ctx = canvas.getContext("2d", { alpha: false });
 
   const positions = JSON.parse(
-    "[[195, -72],[195, -72],[191, -65],[189, -63],[188, -61],[187, -58],[185, -54],[182, -49],[180, -47],[178, -42],[174, -36],[173, -34],[172, -30],[170, -28],[167, -23],[165, -19],[162, -12],[159, -7],[157, -4],[156, 0],[155, 1],[152, 25],[150, 70],[149, 100],[146, 119],[146, 120],[144, 120],[143, 120],[142, 120],[140, 120],[137, 120],[135, 120],[134, 121],[134, 121],[132, 122],[131, 122],[129, 122],[127, 122],[127, 122],[126, 122],[124, 122],[122, 122],[119, 123],[118, 124],[112, 126],[108, 127],[104, 128],[96, 132],[86, 134],[81, 137],[75, 140],[73, 141],[71, 142],[70, 142],[66, 144],[64, 145],[64, 146],[63, 137],[69, 116],[67, 120],[64, 124],[57, 131],[52, 136],[49, 140],[49, 140]]"
+    "[[195, -72],[195, -72],[191, -65],[189, -63],[188, -61],[187, -58],[185, -54],[182, -49],[180, -47],[178, -42],[174, -36],[173, -34],[172, -30],[170, -28],[167, -23],[165, -19],[162, -12],[159, -7],[157, -4],[156, 0],[155, 1],[152, 25],[150, 70],[149, 100],[146, 119],[146, 120],[144, 120],[143, 120],[142, 120],[140, 120],[137, 120],[135, 120],[134, 121],[134, 121],[132, 122],[131, 122],[129, 122],[127, 122],[127, 122],[126, 122],[124, 122],[122, 122],[119, 123],[118, 124],[112, 126],[108, 127],[104, 128],[96, 132],[86, 134],[81, 137],[75, 140],[73, 141],[71, 142],[70, 142],[66, 144],[64, 145],[64, 146],[63, 137],[69, 116],[67, 120],[64, 124],[57, 131],[52, 136],[49, 140],[49, 140]]",
   );
 
   for (let i = 0; i < spriteCount; i++) {
@@ -209,7 +215,7 @@ async function scaryAttack(buffer, isGif) {
       0,
       0,
       spriteWidth,
-      spriteHeight
+      spriteHeight,
     );
 
     ctx.drawImage(frame, ...positions[i], 87, 96);
@@ -257,7 +263,8 @@ async function waveDistortAnimated(buffer, isGif) {
   const width = isGif ? frames[0].frameInfo.width : frames.width;
   const height = isGif ? frames[0].frameInfo.height : frames.height;
 
-  const framesLength = Array.isArray(frames) ? frames.length : 30;
+  const sourceFramesLength = Array.isArray(frames) ? frames.length : 30;
+  const framesLength = Math.min(sourceFramesLength, MAX_OUTPUT_FRAMES);
 
   const encoder = createEncoder(width, height);
   encoder.setDelay(isGif ? 0 : 40);
@@ -272,7 +279,10 @@ async function waveDistortAnimated(buffer, isGif) {
   for (let i = 0; i < framesLength; i++) {
     ctx.clearRect(0, 0, width, height);
 
-    const frame = isGif ? await frames[i].getImage() : frames;
+    const sourceIndex = isGif
+      ? getFrameIndex(i, framesLength, sourceFramesLength)
+      : 0;
+    const frame = isGif ? await frames[sourceIndex].getImage() : frames;
     ctx.drawImage(frame, 0, 0);
 
     const imageData = ctx.getImageData(0, 0, width, height);
@@ -302,7 +312,8 @@ async function waveDistortAnimated(buffer, isGif) {
     }
 
     outputCtx.putImageData(outputImageData, 0, 0);
-    if (isGif) encoder.setDelay((frames[i]?.frameInfo?.delay ?? 5) * 10);
+    if (isGif)
+      encoder.setDelay((frames[sourceIndex]?.frameInfo?.delay ?? 5) * 10);
     encoder.addFrame(outputCtx);
   }
 
@@ -315,7 +326,8 @@ async function violentSquish(buffer, isGif) {
 
   const width = isGif ? frames[0].frameInfo.width : frames.width;
   const height = isGif ? frames[0].frameInfo.height : frames.height;
-  const framesLength = Array.isArray(frames) ? frames.length : 20;
+  const sourceFramesLength = Array.isArray(frames) ? frames.length : 20;
+  const framesLength = Math.min(sourceFramesLength, MAX_OUTPUT_FRAMES);
 
   const encoder = createEncoder(width, height);
   encoder.setDelay(isGif ? 0 : 30);
@@ -327,7 +339,10 @@ async function violentSquish(buffer, isGif) {
   for (let i = 0; i < framesLength; i++) {
     ctx.clearRect(0, 0, width, height);
 
-    const frame = isGif ? await frames[i].getImage() : frames;
+    const sourceIndex = isGif
+      ? getFrameIndex(i, framesLength, sourceFramesLength)
+      : 0;
+    const frame = isGif ? await frames[sourceIndex].getImage() : frames;
 
     const scaleX = Math.random() * 0.3 + 0.7;
     const scaleY = Math.random() * 0.3 + 0.7;
@@ -340,7 +355,8 @@ async function violentSquish(buffer, isGif) {
 
     ctx.drawImage(frame, posX, posY, newWidth, newHeight);
 
-    if (isGif) encoder.setDelay((frames[i]?.frameInfo?.delay ?? 5) * 10);
+    if (isGif)
+      encoder.setDelay((frames[sourceIndex]?.frameInfo?.delay ?? 5) * 10);
     encoder.addFrame(ctx);
   }
 
@@ -353,7 +369,8 @@ async function rotate(buffer, isGif) {
 
   const width = isGif ? frames[0].frameInfo.width : frames.width;
   const height = isGif ? frames[0].frameInfo.height : frames.height;
-  const framesLength = Array.isArray(frames) ? frames.length : 30;
+  const sourceFramesLength = Array.isArray(frames) ? frames.length : 30;
+  const framesLength = Math.min(sourceFramesLength, MAX_OUTPUT_FRAMES);
 
   const encoder = createEncoder(width, height);
   encoder.setDelay(isGif ? 0 : 50);
@@ -367,7 +384,10 @@ async function rotate(buffer, isGif) {
 
   for (let i = 0; i < framesLength; i++) {
     ctx.clearRect(0, 0, width, height);
-    const frame = isGif ? await frames[i].getImage() : frames;
+    const sourceIndex = isGif
+      ? getFrameIndex(i, framesLength, sourceFramesLength)
+      : 0;
+    const frame = isGif ? await frames[sourceIndex].getImage() : frames;
 
     const angle = (i / framesLength) * 2 * Math.PI;
 
@@ -377,7 +397,8 @@ async function rotate(buffer, isGif) {
     ctx.drawImage(frame, -centerX, -centerY, width, height);
     ctx.restore();
 
-    if (isGif) encoder.setDelay((frames[i]?.frameInfo?.delay ?? 5) * 10);
+    if (isGif)
+      encoder.setDelay((frames[sourceIndex]?.frameInfo?.delay ?? 5) * 10);
     encoder.addFrame(ctx);
   }
 
@@ -390,7 +411,8 @@ async function rotateCounterclockwise(buffer, isGif) {
 
   const width = isGif ? frames[0].frameInfo.width : frames.width;
   const height = isGif ? frames[0].frameInfo.height : frames.height;
-  const framesLength = Array.isArray(frames) ? frames.length : 30;
+  const sourceFramesLength = Array.isArray(frames) ? frames.length : 30;
+  const framesLength = Math.min(sourceFramesLength, MAX_OUTPUT_FRAMES);
 
   const encoder = createEncoder(width, height);
   encoder.setDelay(isGif ? 0 : 50);
@@ -404,7 +426,10 @@ async function rotateCounterclockwise(buffer, isGif) {
 
   for (let i = 0; i < framesLength; i++) {
     ctx.clearRect(0, 0, width, height);
-    const frame = isGif ? await frames[i].getImage() : frames;
+    const sourceIndex = isGif
+      ? getFrameIndex(i, framesLength, sourceFramesLength)
+      : 0;
+    const frame = isGif ? await frames[sourceIndex].getImage() : frames;
 
     const angle = -(i / framesLength) * 2 * Math.PI;
 
@@ -414,7 +439,8 @@ async function rotateCounterclockwise(buffer, isGif) {
     ctx.drawImage(frame, -centerX, -centerY, width, height);
     ctx.restore();
 
-    if (isGif) encoder.setDelay((frames[i]?.frameInfo?.delay ?? 5) * 10);
+    if (isGif)
+      encoder.setDelay((frames[sourceIndex]?.frameInfo?.delay ?? 5) * 10);
     encoder.addFrame(ctx);
   }
 
@@ -461,7 +487,8 @@ async function heartbeat(buffer, isGif) {
   const width = isGif ? frames[0].frameInfo.width : frames.width;
   const height = isGif ? frames[0].frameInfo.height : frames.height;
 
-  const framesLength = Array.isArray(frames) ? frames.length : 30;
+  const sourceFramesLength = Array.isArray(frames) ? frames.length : 30;
+  const framesLength = Math.min(sourceFramesLength, MAX_OUTPUT_FRAMES);
 
   const heartbeatScale = (i) => {
     const t = i / (framesLength - 1);
@@ -496,11 +523,15 @@ async function heartbeat(buffer, isGif) {
   for (let i = 0; i < framesLength; i++) {
     ctx.clearRect(0, 0, width, height);
 
-    const frame = isGif ? await frames[i].getImage() : frames;
+    const sourceIndex = isGif
+      ? getFrameIndex(i, framesLength, sourceFramesLength)
+      : 0;
+    const frame = isGif ? await frames[sourceIndex].getImage() : frames;
 
     drawHeartbeatFrame(frame, heartbeatScale(i));
 
-    if (isGif) encoder.setDelay((frames[i]?.frameInfo?.delay ?? 5) * 10);
+    if (isGif)
+      encoder.setDelay((frames[sourceIndex]?.frameInfo?.delay ?? 5) * 10);
     encoder.addFrame(ctx);
   }
 
@@ -510,7 +541,7 @@ async function heartbeat(buffer, isGif) {
 
 async function getThisManA(buffer, isGif) {
   const spriteImage = await loadImage(
-    toValidPath("../images/get-this-man-a.png")
+    toValidPath("../images/get-this-man-a.png"),
   );
   const spriteWidth = 485;
   const spriteHeight = 200;
@@ -543,7 +574,7 @@ async function getThisManA(buffer, isGif) {
       0,
       0,
       spriteWidth,
-      spriteHeight
+      spriteHeight,
     );
 
     ctx.drawImage(frame, 319, 157, 68, 33);
@@ -567,5 +598,5 @@ module.exports = {
   shuffle,
   scaryAttack,
   heartbeat,
-  getThisManA
+  getThisManA,
 };
