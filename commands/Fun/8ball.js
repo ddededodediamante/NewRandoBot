@@ -50,7 +50,7 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
   const answer = getRandom(answers[category]);
 
   await interaction.reply({
-    content: answer,
+    content: `> ${ellipsis(question, 100)}\n${answer}`,
     allowedMentions: { parse: [], repliedUser: true },
   });
 };
