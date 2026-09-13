@@ -4,7 +4,6 @@ const {
   InteractionContextType,
   ChatInputCommandInteraction,
 } = require("discord.js");
-const { ellipsis } = require("../../functions/utils");
 
 const data = new SlashCommandBuilder()
   .setName("8ball")
@@ -26,30 +25,8 @@ const data = new SlashCommandBuilder()
   );
 
 const answers = {
-  yes: [
-    "yeah",
-    "yes",
-    "possibly",
-    "i think so but idk",
-    "you already know that's true",
-    "YES!!",
-    "✅",
-    "fact checked true by me",
-    "mmmmmyea",
-    "yuh uh",
-    "https://klipy.com/gifs/lie-detector-meme ",
-  ],
-  no: [
-    "no",
-    "nope",
-    "not at all",
-    "NO!!",
-    "❌",
-    "fact checked false by me",
-    "breaking news: no",
-    "nuh uh",
-    "https://klipy.com/gifs/lie-lie-detector",
-  ],
+  "yes": ["yeah", "yes", "possibly", "i think so but idk", "you already know that's true", "YES!!", "✅", "fact checked true by me", "mmmmmyea", "yuh uh", "https://klipy.com/gifs/lie-detector-meme "],
+  "no": ["no", "nope", "not at all", "NO!!", "❌", "fact checked false by me", "breaking news: no", "nuh uh", "https://klipy.com/gifs/lie-lie-detector"]
 };
 
 function hashString(str) {
@@ -60,23 +37,20 @@ function hashString(str) {
   return hash >>> 0;
 }
 
-function getDeterministic(arr, seed) {
-  const index = seed % arr.length;
-  return arr[index];
+function getRandom(arr) {
+  const randomIndex = Math.floor(Math.random() * arr.length);
+  return arr[randomIndex];
 }
 
 const run = async (interaction = ChatInputCommandInteraction.prototype) => {
-  const question = interaction.options
-    .getString("question")
-    .trim()
-    .toLowerCase();
+  const question = interaction.options.getString("question").trim().toLowerCase();
   const hash = hashString(question);
 
   const category = hash % 2 === 0 ? "yes" : "no";
-  const answer = getDeterministic(answers[category], hash);
+  const answer = getRandom(answers[category]);
 
   await interaction.reply({
-    content: `> ${ellipsis(question, 67)}\n${answer}`,
+    content: answer,
     allowedMentions: { parse: [], repliedUser: true },
   });
 };
