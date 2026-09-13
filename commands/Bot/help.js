@@ -175,10 +175,13 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
   const reply = await interaction.reply({
     embeds: [buildEmbed(0, pages)],
     components: pages.length > 1 ? [buildRow(0, pages)] : [],
+    withResponse: true,
   });
 
-  if (pages.length > 1) {
-    helpPages.set(reply.id, {
+  const replyMessage = reply.resource?.message;
+
+  if (pages.length > 1 && replyMessage) {
+    helpPages.set(replyMessage.id, {
       pages,
       pageIndex: 0,
       userId: interaction.user.id,
