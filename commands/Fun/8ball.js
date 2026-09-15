@@ -4,6 +4,7 @@ const {
   InteractionContextType,
   ChatInputCommandInteraction,
 } = require("discord.js");
+const { ellipsis } = require("../../functions/utils.js");
 
 const data = new SlashCommandBuilder()
   .setName("8ball")
