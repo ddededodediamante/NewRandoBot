@@ -4,6 +4,7 @@ const {
   GuildMember,
   CommandInteraction,
   inlineCode,
+  codeBlock,
 } = require("discord.js");
 const Servers = require("../models/serverSchema.js");
 const { helpPages, buildEmbed, buildRow } = require("../commands/Bot/help.js");
@@ -52,7 +53,7 @@ module.exports = async (client = Client.prototype) => {
       await sendLog(client, {
         title: "Failed to create guild config",
         description: `**Guild:** ${guild.name} (\`${guild.id}\`)`,
-        fields: [{ name: "Error", value: inlineCode(formatError(err)) }],
+        fields: [{ name: "Error", value: codeBlock(formatError(err)) }],
         color: "Red",
       });
     }
@@ -142,7 +143,7 @@ module.exports = async (client = Client.prototype) => {
           description: `**Command:** \`${interaction.commandName}\`\n**User:** ${
             interaction.user?.tag ?? "unknown"
           }\n**Guild:** ${interaction.guild?.name ?? "DM"}`,
-          fields: [{ name: "Error", value: inlineCode(formatError(error)) }],
+          fields: [{ name: "Error", value: codeBlock(formatError(error)) }],
           color: "Red",
         });
         const method =
@@ -411,9 +412,7 @@ module.exports = async (client = Client.prototype) => {
 
     if (config?.wordStory?.channel === message.channelId) {
       const { lastUser } = config.wordStory;
-
       const content = inlineCode(message.content.trim());
-
       if (message.author.id === lastUser) {
         try {
           await message.channel.send({

@@ -37,7 +37,7 @@ function randomFromArray(array) {
 
 const run = async (interaction = ChatInputCommandInteraction.prototype) => {
   const subcommand = interaction.options.getSubcommand();
-  let response = "No fact, oh no!";
+  let response = "❌ No fact, oh no!";
 
   await interaction.deferReply();
 
