@@ -127,6 +127,38 @@ if (!isTest) {
     res.status(200).send("Hello World!");
   });
 
+  app.get("/commands", (req, res) => {
+    const commands = client.commands.map((c) => {
+      const { name, type, description, options } = c.data.toJSON();
+      return {
+        name,
+        type,
+        ...(description ? { description } : {}),
+        ...(options
+          ? {
+              options: options.map(({ name, type, description, required }) => ({
+                name,
+                type,
+                ...(description ? { description } : {}),
+                ...(required ? { required } : {}),
+              })),
+            }
+          : {}),
+      };
+    });
+    res.status(200).json(commands);
+  });
+
+  app.get("/bot", (req, res) => {
+    res.status(200).json({
+      guilds: client.guilds.cache.size,
+      channels: client.channels.cache.size,
+      users: client.users.cache.size,
+      ping: client.ws.ping,
+      uptime: client.uptime,
+    });
+  });
+
   app.listen(PORT, () => {
     console.log(`✅ Listening to port ${PORT}`);
   });
