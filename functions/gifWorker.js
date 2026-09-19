@@ -16,7 +16,16 @@ parentPort.on("message", async ({ buffer, effect, isGif }) => {
       return;
     }
 
-    parentPort.postMessage({ result: out, timeMs });
+    const result = Buffer.isBuffer(out) ? out : Buffer.from(out);
+    const transfer =
+      result.byteOffset === 0 && result.buffer instanceof ArrayBuffer
+        ? [result.buffer]
+        : [];
+    try {
+      parentPort.postMessage({ result, timeMs }, transfer);
+    } catch {
+      parentPort.postMessage({ result, timeMs });
+    }
   } catch (err) {
     parentPort.postMessage({
       __ERR: err?.message ?? String(err),

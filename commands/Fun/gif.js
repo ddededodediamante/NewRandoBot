@@ -91,7 +91,9 @@ async function run(interaction = ChatInputCommandInteraction.prototype) {
       responseType: "arraybuffer",
     });
 
-    const inputBuffer = Buffer.from(response.data);
+    const inputBuffer = Buffer.isBuffer(response.data)
+      ? response.data
+      : Buffer.from(response.data);
     if (inputBuffer.length > MAX_INPUT_BYTES) {
       const sizeMB = (inputBuffer.length / (1024 * 1024)).toFixed(2);
 

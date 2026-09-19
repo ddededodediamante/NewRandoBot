@@ -32,13 +32,29 @@ worker.on("error", (err) => {
   processQueue();
 });
 
+function getTransferList(payload) {
+  const buffer = payload && payload.buffer;
+  if (
+    Buffer.isBuffer(buffer) &&
+    buffer.byteOffset === 0 &&
+    buffer.buffer instanceof ArrayBuffer
+  ) {
+    return [buffer.buffer];
+  }
+  return [];
+}
+
 function processQueue() {
   if (busy) return;
   const job = queue[0];
   if (!job) return;
 
   busy = true;
-  worker.postMessage(job.payload);
+  try {
+    worker.postMessage(job.payload, getTransferList(job.payload));
+  } catch {
+    worker.postMessage(job.payload);
+  }
 }
 
 function enqueueGifJob(payload) {

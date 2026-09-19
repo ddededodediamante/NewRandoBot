@@ -1,6 +1,6 @@
 const { toValidPath } = require("./path");
 const { createCanvas, loadImage, ImageData } = require("@napi-rs/canvas");
-const GIFEncoder = require("gif-encoder-2");
+const { GIFEncoder: createGifEncoder, quantize, applyPalette } = require("gifenc");
 const sharp = require("sharp");
 
 if (typeof document === "undefined") {
@@ -11,30 +11,33 @@ if (typeof document === "undefined") {
   };
 }
 
-const DEFAULT_QUALITY = 1;
 const MAX_OUTPUT_FRAMES = 30;
+const MAX_OUTPUT_DIMENSION = 480;
+
+function scaleDimensions(width, height) {
+  const longest = Math.max(width, height);
+  if (longest <= MAX_OUTPUT_DIMENSION) return { width, height };
+  const scale = MAX_OUTPUT_DIMENSION / longest;
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
 
 async function decodeGifFrames(buffer) {
-  const img = sharp(buffer, { animated: true });
-  const meta = await img.metadata();
-  const { data } = await img
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
+  const meta = await sharp(buffer, { animated: true }).metadata();
 
-  const width = meta.width;
-  const height = meta.pageHeight ?? meta.height;
   const pageCount = meta.pages ?? 1;
   const delays = meta.delay ?? [];
-
-  const frameBytes = width * height * 4;
+  const { width, height } = scaleDimensions(
+    meta.width,
+    meta.pageHeight ?? meta.height,
+  );
 
   const frames = [];
   for (let i = 0; i < pageCount; i++) {
-    const raw = data.subarray(i * frameBytes, (i + 1) * frameBytes);
-
     frames.push({
-      _raw: raw,
+      index: i,
       _canvas: null,
       frameInfo: {
         width,
@@ -43,8 +46,18 @@ async function decodeGifFrames(buffer) {
       },
       async getImage() {
         if (!this._canvas) {
+          const { data } = await sharp(buffer, {
+            animated: true,
+            page: this.index,
+            pages: 1,
+          })
+            .ensureAlpha()
+            .resize({ width, height, fit: "fill" })
+            .raw()
+            .toBuffer({ resolveWithObject: true });
+
           const imageData = new ImageData(
-            new Uint8ClampedArray(this._raw),
+            new Uint8ClampedArray(data),
             width,
             height,
           );
@@ -61,7 +74,16 @@ async function decodeGifFrames(buffer) {
 }
 
 async function loadFrames(buffer, isGif) {
-  return isGif ? await decodeGifFrames(buffer) : await loadImage(buffer);
+  if (isGif) return await decodeGifFrames(buffer);
+
+  const img = await loadImage(buffer);
+  const { width, height } = scaleDimensions(img.width, img.height);
+
+  if (img.width === width && img.height === height) return img;
+
+  const canvas = createCanvas(width, height);
+  canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+  return canvas;
 }
 
 function getFrameIndex(i, spriteCount, framesLength) {
@@ -74,13 +96,40 @@ function easeInOut(x) {
 }
 
 function createEncoder(width, height) {
-  const encoder = new GIFEncoder(width, height, "octree", true);
-  encoder.setRepeat(0);
-  encoder.setQuality(DEFAULT_QUALITY);
-  encoder.setThreshold(0);
-  encoder.setPaletteSize(7);
-  encoder.sample = 10;
-  return encoder;
+  const gif = createGifEncoder();
+  let delay = 0;
+  let repeat = 0;
+  let palette = null;
+
+  return {
+    setRepeat(value) {
+      repeat = value;
+    },
+    setQuality() {},
+    setThreshold() {},
+    setPaletteSize() {},
+    start() {},
+    setDelay(ms) {
+      delay = ms;
+    },
+    addFrame(ctx) {
+      const rgba = ctx.getImageData(0, 0, width, height).data;
+
+      if (!palette) palette = quantize(rgba, 256);
+
+      const index = applyPalette(rgba, palette);
+      gif.writeFrame(index, width, height, { palette, delay, repeat });
+    },
+    finish() {
+      gif.finish();
+    },
+    out: {
+      getData() {
+        const view = gif.bytesView();
+        return Buffer.from(view.buffer, view.byteOffset, view.byteLength);
+      },
+    },
+  };
 }
 
 async function rainbow(buffer, isGif) {
@@ -274,7 +323,7 @@ async function compress(buffer, isGif) {
   const width = Math.max(1, frames[0].frameInfo.width / 2);
   const height = Math.max(1, frames[0].frameInfo.height / 2);
 
-  const framesLength = frames.length;
+  const framesLength = Math.min(frames.length, MAX_OUTPUT_FRAMES);
 
   const encoder = createEncoder(width, height);
   encoder.setRepeat(0);
@@ -286,9 +335,11 @@ async function compress(buffer, isGif) {
   const ctx = canvas.getContext("2d", { alpha: false });
 
   for (let i = 0; i < framesLength; i++) {
+    const sourceIndex = getFrameIndex(i, framesLength, frames.length);
+    const frame = await frames[sourceIndex].getImage();
     ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(await frames[i].getImage(), 0, 0, width, height);
-    encoder.setDelay((frames[i].frameInfo.delay ?? 5) * 10);
+    ctx.drawImage(frame, 0, 0, width, height);
+    encoder.setDelay((frames[sourceIndex].frameInfo.delay ?? 5) * 10);
     encoder.addFrame(ctx);
   }
 
@@ -325,32 +376,33 @@ async function waveDistortAnimated(buffer, isGif) {
     ctx.drawImage(frame, 0, 0);
 
     const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
+    const src = imageData.data;
 
     const outputCanvas = createCanvas(width, height);
     const outputCtx = outputCanvas.getContext("2d", { alpha: false });
-    const outputImageData = outputCtx.createImageData(width, height);
+    const density = outputCtx.createImageData(width, height);
+    const dst = density.data;
 
     const phaseOffset = (i / framesLength) * 2 * Math.PI;
+    const stride = width * 4;
 
     for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const offsetX = Math.sin(y * frequency + phaseOffset) * amplitude;
-        const newX = Math.round(x + offsetX);
+      const offsetX = Math.round(Math.sin(y * frequency + phaseOffset) * amplitude);
+      const rowStart = y * stride;
 
-        if (newX >= 0 && newX < width) {
-          const srcIndex = (y * width + x) * 4;
-          const destIndex = (y * width + newX) * 4;
-
-          outputImageData.data[destIndex] = data[srcIndex];
-          outputImageData.data[destIndex + 1] = data[srcIndex + 1];
-          outputImageData.data[destIndex + 2] = data[srcIndex + 2];
-          outputImageData.data[destIndex + 3] = data[srcIndex + 3];
-        }
+      if (offsetX === 0) {
+        dst.set(src.subarray(rowStart, rowStart + stride), rowStart);
+      } else if (offsetX > 0) {
+        const count = (width - offsetX) * 4;
+        dst.set(src.subarray(rowStart, rowStart + count), rowStart + offsetX * 4);
+      } else {
+        const start = -offsetX;
+        const count = (width - start) * 4;
+        dst.set(src.subarray(rowStart + start * 4, rowStart + start * 4 + count), rowStart);
       }
     }
 
-    outputCtx.putImageData(outputImageData, 0, 0);
+    outputCtx.putImageData(density, 0, 0);
     if (isGif)
       encoder.setDelay((frames[sourceIndex]?.frameInfo?.delay ?? 5) * 10);
     encoder.addFrame(outputCtx);
@@ -491,15 +543,17 @@ async function shuffle(buffer, isGif) {
   if (!isGif) return "only_gif";
 
   const frames = await loadFrames(buffer, true);
-  for (let i = frames.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [frames[i], frames[j]] = [frames[j], frames[i]];
-  }
 
   const width = Math.max(1, frames[0].frameInfo.width);
   const height = Math.max(1, frames[0].frameInfo.height);
 
-  const framesLength = frames.length;
+  const order = [...Array(frames.length).keys()];
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+
+  const framesLength = Math.min(order.length, MAX_OUTPUT_FRAMES);
 
   const encoder = createEncoder(width, height);
   encoder.setDelay(0);
@@ -509,9 +563,11 @@ async function shuffle(buffer, isGif) {
   const ctx = canvas.getContext("2d", { alpha: false });
 
   for (let i = 0; i < framesLength; i++) {
+    const sourceIndex = order[i];
+    const frame = await frames[sourceIndex].getImage();
     ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(await frames[i].getImage(), 0, 0, width, height);
-    encoder.setDelay((frames[i].frameInfo.delay ?? 5) * 10);
+    ctx.drawImage(frame, 0, 0, width, height);
+    encoder.setDelay((frames[sourceIndex].frameInfo.delay ?? 5) * 10);
     encoder.addFrame(ctx);
   }
 
