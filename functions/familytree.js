@@ -311,11 +311,11 @@ async function renderFamilyTree(people, focusId, resolveUser, title) {
     const a = at(idA);
     const b = at(idB);
     const mx = (a.x + b.x) / 2;
-    ctx.fillStyle = "#1e1f22";
+    ctx.fillStyle = "#1f1212";
     ctx.beginPath();
     ctx.arc(mx, a.y, 14, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#ed4245";
+    ctx.fillStyle = "#ff0004";
   }
 
   const resolved = await Promise.all(
@@ -342,7 +342,7 @@ async function renderFamilyTree(people, focusId, resolveUser, title) {
     const img = avatarMap.get(id);
     const isFocus = id === focusId;
 
-    ctx.fillStyle = isFocus ? "#fee75c" : "#383a40";
+    ctx.fillStyle = isFocus ? "#ffe448" : "#50535a";
     ctx.beginPath();
     ctx.arc(x, y, NODE / 2 + (isFocus ? 5 : 3), 0, Math.PI * 2);
     ctx.fill();
