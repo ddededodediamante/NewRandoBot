@@ -42,6 +42,10 @@ const UserSchema = new mongoose.Schema({
     partner: { type: String, default: null },
     marriedAt: { type: Date, default: null },
   },
+  family: {
+    parents: { type: [String], default: [] },
+    children: { type: [String], default: [] },
+  },
   createdAt: {
     type: Date,
     default: Date.now,

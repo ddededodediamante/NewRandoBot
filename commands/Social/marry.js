@@ -15,7 +15,7 @@ const PROPOSAL_TIMEOUT = 60 * 1000;
 
 const data = new SlashCommandBuilder()
   .setName("marry")
-  .setDescription("Fun | Marry another user (just for fun)")
+  .setDescription("Social | Marry another user (just for fun)")
   .setContexts(
     InteractionContextType.BotDM,
     InteractionContextType.Guild,
