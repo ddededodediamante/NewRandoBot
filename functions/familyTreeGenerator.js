@@ -12,7 +12,7 @@ const MIN_GAP = 44;
 const PAD = 28;
 const LABEL_H = 26;
 const LANE = 14;
-const BACK_COLOR = "#d6336c";
+const BACK_COLOR = "#df4279";
 const ARROW_W = 7;
 const ARROW_H = 12;
 
@@ -24,13 +24,14 @@ const FAMILY_COLORS = [
   "#1971c2",
   "#2f9e44",
   "#f08c00",
-  "#9c36b5",
+  "#b5369a",
   "#0c8599",
-  "#c2255c",
   "#5c940d",
   "#6741d9",
-  "#e8590c",
-  "#495057",
+  "#7a3b28",
+  "#50ad96",
+  "#7a7428",
+  "#a550ad",
 ];
 
 async function collectFamily(startId) {
@@ -279,21 +280,25 @@ function layout(people, gen, looseCouples = new Set()) {
   const minX = Math.min(...rows.flat().map((u) => u.x));
   for (const u of rows.flat()) u.x -= minX;
 
+  const busLanes = new Array(rows.length).fill(0);
+  const stemLanes = new Array(rows.length).fill(0);
+  const seenFamilies = new Set();
+  for (const person of people.values()) {
+    if (!person.parents.length) continue;
+    const lowest = Math.max(...person.parents.map((id) => gen.get(id)));
+    if (gen.get(person.id) > lowest + 1) stemLanes[gen.get(person.id) - 1]++;
+    const key = [...person.parents].sort().join("|");
+    if (seenFamilies.has(key)) continue;
+    seenFamilies.add(key);
+    busLanes[lowest]++;
+    for (const id of person.parents) {
+      if (gen.get(id) < lowest) stemLanes[gen.get(id)]++;
+    }
+  }
+
   const gapBelow = rows.map((_, g) => {
     if (g === rows.length - 1) return 0;
-    const lanes = new Set();
-    for (const unit of rows[g + 1]) {
-      const parents = unitParents(unit);
-
-      lanes.add(
-        parents
-          .map((pu) => pu.members.join("+"))
-          .sort()
-          .join("|"),
-      );
-    }
-    lanes.delete("");
-    const laneCount = Math.max(1, lanes.size);
+    const laneCount = Math.max(1, busLanes[g] + stemLanes[g]);
     return Math.max(MIN_GAP, 30 + laneCount * LANE);
   });
 
@@ -321,7 +326,9 @@ function layout(people, gen, looseCouples = new Set()) {
     ...[...pos.values()].map((p) => p.y + NODE / 2 + LABEL_H),
   );
 
-  return { pos, width, height };
+  const rowCenters = rowTop.map((t) => t + NODE / 2);
+
+  return { pos, width, height, rowCenters };
 }
 
 function truncateText(ctx, text, maxWidth) {
@@ -344,6 +351,134 @@ function drawFallbackAvatar(ctx, x, y, name) {
   ctx.fillText((name?.[0] ?? "?").toUpperCase(), x, y + 2);
 }
 
+function buildFamilies(people) {
+  const map = new Map();
+  for (const child of people.values()) {
+    if (!child.parents.length) continue;
+    const key = [...child.parents].sort().join("|");
+    if (!map.has(key)) map.set(key, { parents: child.parents, kids: [] });
+    map.get(key).kids.push(child.id);
+  }
+  return [...map.values()];
+}
+
+function mergeBlocks(blocks) {
+  const merged = [];
+  for (const [lo, hi] of [...blocks].sort((a, b) => a[0] - b[0])) {
+    const last = merged[merged.length - 1];
+    if (last && lo <= last[1]) last[1] = Math.max(last[1], hi);
+    else merged.push([lo, hi]);
+  }
+  return merged;
+}
+
+function planChannels(people, pos, looseCouples, families, labelHalf) {
+  const rowsByY = new Map();
+  for (const [id, q] of pos) {
+    const key = Math.round(q.y);
+    if (!rowsByY.has(key)) rowsByY.set(key, []);
+    rowsByY.get(key).push({ id, x: q.x });
+  }
+
+  const blocksBetween = (fromY, toY) => {
+    const blocks = [];
+    for (const [y, members] of rowsByY) {
+      if (y <= fromY + 1 || y > toY + 1) continue;
+      for (const m of members) {
+        const half = Math.max(NODE / 2 + 5, labelHalf(m.id) + 3);
+        blocks.push([m.x - half, m.x + half]);
+        const partner = people.get(m.id).partner;
+        const mate = partner && members.find((o) => o.id === partner);
+        if (mate && m.x < mate.x && !looseCouples.has(pairKey(m.id, partner))) {
+          blocks.push([m.x, mate.x]);
+        }
+      }
+    }
+    return mergeBlocks(blocks);
+  };
+
+  const routes = new Map();
+  const taken = [];
+  let minX = Infinity;
+  let maxX = -Infinity;
+
+  const choose = (desired, merged, y0, y1) => {
+    const inBlock = (x) => merged.some(([lo, hi]) => x > lo && x < hi);
+    const occupied = (x) =>
+      taken.some(
+        (t) => Math.abs(t.x - x) < 8 && t.y0 <= y1 + 1 && t.y1 >= y0 - 1,
+      );
+    const ok = (x) => !inBlock(x) && !occupied(x);
+
+    if (ok(desired)) return null;
+
+    const candidates = [];
+    for (const off of [9, -9, 18, -18, 27, -27]) candidates.push(desired + off);
+    if (merged.length) {
+      for (let k = 0; k < 4; k++) {
+        candidates.push(merged[0][0] - 14 - k * 9);
+        candidates.push(merged[merged.length - 1][1] + 14 + k * 9);
+      }
+      for (let i = 0; i + 1 < merged.length; i++) {
+        const a = merged[i][1];
+        const b = merged[i + 1][0];
+        if (b - a < 12) continue;
+        for (const off of [0, -9, 9]) {
+          const c = (a + b) / 2 + off;
+          if (c > a + 4 && c < b - 4) candidates.push(c);
+        }
+      }
+    }
+
+    let best = null;
+    let bestCost = Infinity;
+    for (const c of candidates) {
+      if (!ok(c)) continue;
+      const cost = Math.abs(c - desired) + (c < desired ? 0.5 : 0);
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = c;
+      }
+    }
+    return best;
+  };
+
+  const record = (key, x, y0, y1) => {
+    routes.set(key, x);
+    taken.push({ x, y0, y1 });
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+  };
+
+  families.forEach((family, index) => {
+    const lowest = Math.max(...family.parents.map((id) => pos.get(id).y));
+
+    for (const id of family.parents) {
+      const from = pos.get(id);
+      if (from.y >= lowest - 1) continue;
+      const best = choose(
+        from.x,
+        blocksBetween(from.y, lowest),
+        from.y,
+        lowest,
+      );
+      if (best !== null) record(`${index}:${id}`, best, from.y, lowest);
+    }
+
+    for (const kidId of family.kids) {
+      const to = pos.get(kidId);
+      const crossesRow = [...rowsByY.keys()].some(
+        (y) => y > lowest + 1 && y < to.y - 1,
+      );
+      if (!crossesRow) continue;
+      const best = choose(to.x, blocksBetween(lowest, to.y - 2), lowest, to.y);
+      if (best !== null) record(`${index}:kid:${kidId}`, best, lowest, to.y);
+    }
+  });
+
+  return { routes, minX, maxX };
+}
+
 async function renderFamilyTree(allPeople, focusId, resolveUser) {
   const backEdges = findBackEdges(allPeople);
   const people = new Map();
@@ -356,11 +491,50 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
   }
 
   const { gen, looseCouples } = assignGenerations(people);
-  const { pos, width, height } = layout(people, gen, looseCouples);
+  const { pos, width, height, rowCenters } = layout(people, gen, looseCouples);
 
-  const backRoom = backEdges.size ? 26 + backEdges.size * 16 + ARROW_H : 0;
+  const ids = [...people.keys()];
+  const info = new Map(
+    await Promise.all(ids.map(async (id) => [id, await resolveUser(id)])),
+  );
+  const avatarMap = new Map(
+    await Promise.all(
+      ids.map(async (id) => {
+        const url = info.get(id)?.avatarURL;
+        if (!url) return [id, null];
+        try {
+          return [id, await loadImage(url)];
+        } catch {
+          return [id, null];
+        }
+      }),
+    ),
+  );
 
-  const leftRoom = looseCouples.size ? 22 + looseCouples.size * 16 + 8 : 0;
+  const measure = createCanvas(1, 1).getContext("2d");
+  const labelHalf = (id) => {
+    measure.font = `${id === focusId ? "bold " : ""}16px sans-serif`;
+    const text = truncateText(
+      measure,
+      info.get(id)?.name ?? "Unknown",
+      NODE + H_GAP - 4,
+    );
+    return measure.measureText(text).width / 2;
+  };
+
+  const families = buildFamilies(people);
+  const {
+    routes,
+    minX: chanMin,
+    maxX: chanMax,
+  } = planChannels(people, pos, looseCouples, families, labelHalf);
+  const chanLeft = routes.size ? Math.max(0, 10 - chanMin) : 0;
+  const chanRight = routes.size ? Math.max(0, chanMax + 10 - width) : 0;
+
+  const backRoom =
+    (backEdges.size ? 26 + backEdges.size * 16 + ARROW_H : 0) + chanRight;
+  const leftRoom =
+    (looseCouples.size ? 22 + looseCouples.size * 16 + 8 : 0) + chanLeft;
   const canvasW = Math.ceil(width + PAD * 2 + backRoom + leftRoom);
   const canvasH = Math.ceil(height + PAD * 2);
 
@@ -422,7 +596,7 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
         leftmost = Math.min(leftmost, q.x);
       }
     }
-    const left = leftmost - NODE / 2 - 22 - looseIndex * 16;
+    const left = leftmost - NODE / 2 - 22 - looseIndex * 16 - chanLeft;
     looseIndex++;
     ctx.strokeStyle = PARTNER_COLOR;
     ctx.beginPath();
@@ -437,73 +611,101 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
     }
   }
 
-  const families = new Map();
-  for (const child of people.values()) {
-    if (!child.parents.length) continue;
-    const key = [...child.parents].sort().join("|");
-    if (!families.has(key))
-      families.set(key, { parents: child.parents, kids: [] });
-    families.get(key).kids.push(child.id);
-  }
-
   const lanesUsed = new Map();
-  let colorIndex = 0;
 
-  for (const { parents, kids } of families.values()) {
-    const color = FAMILY_COLORS[colorIndex++ % FAMILY_COLORS.length];
+  families.forEach(({ parents, kids }, index) => {
+    const color = FAMILY_COLORS[index % FAMILY_COLORS.length];
     const pts = parents.map(at);
+    const lowestY = Math.max(...pts.map((p) => p.y));
     const areCouple =
       parents.length === 2 &&
       people.get(parents[0])?.partner === parents[1] &&
-      people.get(parents[1])?.partner === parents[0];
-
-    const rowY = Math.max(...pts.map((p) => p.y));
-    const anchorX = pts.reduce((sum, p) => sum + p.x, 0) / pts.length;
-
-    const anchorY = areCouple ? rowY : rowY + NODE / 2;
+      people.get(parents[1])?.partner === parents[0] &&
+      Math.abs(pts[0].y - pts[1].y) < 1;
 
     const kidPts = kids.map(at);
     const topY = Math.min(...kidPts.map((k) => k.y)) - NODE / 2;
 
-    const lane = lanesUsed.get(rowY) ?? 0;
-    lanesUsed.set(rowY, lane + 1);
-    const channelTop = rowY + NODE / 2 + LABEL_H + 6;
-    const busY = Math.min(channelTop + lane * LANE, topY - 8);
+    const lane = lanesUsed.get(lowestY) ?? 0;
+    lanesUsed.set(lowestY, lane + 1);
+    const busY = Math.min(
+      lowestY + NODE / 2 + LABEL_H + 6 + lane * LANE,
+      topY - 8,
+    );
 
-    const belowLabelY = rowY + NODE / 2 + LABEL_H;
-    if (!areCouple && parents.length === 2) {
-      for (const p of pts)
-        line(color, [
-          [p.x, belowLabelY],
-          [p.x, busY],
-        ]);
-    } else if (areCouple) {
+    const stemXs = [];
+    if (areCouple) {
+      const anchorX = (pts[0].x + pts[1].x) / 2;
       line(color, [
-        [anchorX, anchorY],
+        [anchorX, lowestY],
         [anchorX, busY],
       ]);
+      stemXs.push(anchorX);
     } else {
-      line(color, [
-        [anchorX, belowLabelY],
-        [anchorX, busY],
-      ]);
+      parents.forEach((id, i) => {
+        const p = pts[i];
+        const fromY = p.y + NODE / 2 + LABEL_H;
+        const channel = routes.get(`${index}:${id}`);
+        if (channel === undefined) {
+          line(color, [
+            [p.x, fromY],
+            [p.x, busY],
+          ]);
+          stemXs.push(p.x);
+          return;
+        }
+        const stemLane = lanesUsed.get(p.y) ?? 0;
+        lanesUsed.set(p.y, stemLane + 1);
+        const laneY = fromY + 6 + stemLane * LANE;
+        const cx = channel + PAD + leftRoom;
+        line(color, [
+          [p.x, fromY],
+          [p.x, laneY],
+          [cx, laneY],
+          [cx, busY],
+        ]);
+        stemXs.push(cx);
+      });
     }
 
-    const xs = [anchorX, ...kidPts.map((k) => k.x)];
+    const kidLinks = kids.map((kidId, i) => {
+      const k = kidPts[i];
+      const channel = routes.get(`${index}:kid:${kidId}`);
+      return {
+        k,
+        cx: channel === undefined ? null : channel + PAD + leftRoom,
+        id: kidId,
+      };
+    });
+
+    const xs = [...stemXs, ...kidLinks.map((l) => l.cx ?? l.k.x)];
     line(color, [
       [Math.min(...xs), busY],
       [Math.max(...xs), busY],
     ]);
 
-    for (const k of kidPts) {
+    for (const { k, cx, id } of kidLinks) {
       const tipY = k.y - NODE / 2 - 3;
-      line(color, [
-        [k.x, busY],
-        [k.x, tipY - ARROW_H + 1],
-      ]);
+      if (cx === null) {
+        line(color, [
+          [k.x, busY],
+          [k.x, tipY - ARROW_H + 1],
+        ]);
+      } else {
+        const above = rowCenters[gen.get(id) - 1] + PAD;
+        const dropLane = lanesUsed.get(above) ?? 0;
+        lanesUsed.set(above, dropLane + 1);
+        const dropY = above + NODE / 2 + LABEL_H + 6 + dropLane * LANE;
+        line(color, [
+          [cx, busY],
+          [cx, dropY],
+          [k.x, dropY],
+          [k.x, tipY - ARROW_H + 1],
+        ]);
+      }
       arrowDown(color, k.x, tipY);
     }
-  }
+  });
 
   if (backEdges.size) {
     const bulge = new Map();
@@ -516,7 +718,7 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
 
       const n = bulge.get("k") ?? 0;
       bulge.set("k", n + 1);
-      const side = Math.max(from.x, to.x) + NODE / 2 + 26 + n * 16;
+      const side = Math.max(from.x, to.x) + NODE / 2 + 26 + n * 16 + chanRight;
 
       const startX = from.x + NODE / 2;
       const endX = to.x + NODE / 2;
@@ -538,24 +740,6 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
       ctx.fill();
     }
   }
-
-  const ids = [...people.keys()];
-  const info = new Map(
-    await Promise.all(ids.map(async (id) => [id, await resolveUser(id)])),
-  );
-  const avatarMap = new Map(
-    await Promise.all(
-      ids.map(async (id) => {
-        const url = info.get(id)?.avatarURL;
-        if (!url) return [id, null];
-        try {
-          return [id, await loadImage(url)];
-        } catch {
-          return [id, null];
-        }
-      }),
-    ),
-  );
 
   for (const id of ids) {
     const { x, y } = at(id);
