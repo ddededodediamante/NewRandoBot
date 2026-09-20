@@ -29,14 +29,14 @@ const data = new SlashCommandBuilder()
       .setDescription("The minimum the die can roll")
       .setRequired(false)
       .setMinValue(-1e5)
-      .setMaxValue(0),
+      .setMaxValue(1e5),
   )
   .addNumberOption((option) =>
     option
       .setName("max")
       .setDescription("The maximum the die can roll")
       .setRequired(false)
-      .setMinValue(1)
+      .setMinValue(-1e5)
       .setMaxValue(1e5),
   )
   .addNumberOption((option) =>
@@ -49,17 +49,12 @@ const data = new SlashCommandBuilder()
   );
 
 const run = async (interaction = ChatInputCommandInteraction.prototype) => {
-  const min = interaction.options.getNumber("min") ?? 1;
-  const max = interaction.options.getNumber("max") ?? 6;
+  let min = interaction.options.getNumber("min") ?? 1;
+  let max = interaction.options.getNumber("max") ?? 6;
   const amount = interaction.options.getNumber("amount") ?? 1;
 
   try {
-    if (min > max) {
-      return await interaction.reply({
-        content: "❌ Minimum value cannot be greater than maximum value.",
-        ephemeral: true,
-      });
-    }
+    if (min > max) [min, max] = [max, min];
 
     const rolls = [];
     for (let i = 0; i < amount; i++) {
@@ -81,7 +76,7 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(`**Average:** ${average}`),
         )
-        .addComponents(
+        .addSeparatorComponents(
           new SeparatorBuilder()
             .setDivider(true)
             .setSpacing(SeparatorSpacingSize.Small),
