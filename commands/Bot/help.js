@@ -94,6 +94,13 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
   const { client } = interaction;
   const commandName = interaction.options.getString("command");
 
+  // Remove any existing help pages for this user
+  for (const [messageId, pageData] of helpPages.entries()) {
+    if (pageData.userId === interaction.user.id) {
+      helpPages.delete(messageId);
+    }
+  }
+
   const commands = Array.from(client.commands.values()).filter(
     (command) => command.category !== "Owner",
   );
@@ -187,10 +194,14 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
       pageIndex: 0,
       userId: interaction.user.id,
     });
-    interaction.client.setTimeout(() => {
-      helpPages.delete(id);
-    }, 10 * 60 * 1000);
   }
 };
 
-module.exports = { data, run, helpPages, buildEmbed, buildRow };
+module.exports = {
+  data,
+  run,
+  helpPages,
+  buildEmbed,
+  buildRow,
+  removeUserHelpPages,
+};
