@@ -319,7 +319,7 @@ async function renderFamilyTree(people, focusId, resolveUser, title) {
     ctx.font = "bold 20px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("♥", mx, a.y + 1);
+    ctx.fillText("♥", mx, a.y + 10);
   }
 
   const resolved = await Promise.all(
