@@ -10,11 +10,11 @@ const {
   EmbedBuilder,
 } = require("discord.js");
 const Users = require("../../models/userSchema.js");
+const { walkTree, getRelation } = require("../../functions/family.js");
 
 const PROPOSAL_TIMEOUT = 60 * 1000;
 const MAX_PARENTS = 2;
-const MAX_CHILDREN = 10;
-const MAX_TREE_LOOKUP = 200;
+const MAX_CHILDREN = 15;
 
 const data = new SlashCommandBuilder()
   .setName("adopt")
@@ -81,36 +81,6 @@ async function getUser(id) {
   return user;
 }
 
-/**
- * Walk the family tree from a user in one direction and collect everyone reached.
- * @param {string} startId The user to start from.
- * @param {"parents" | "children"} direction Walk up (ancestors) or down (descendants).
- * @returns {Promise<Set<string>>} Every ancestor/descendant id, excluding the start user.
- */
-async function walkTree(startId, direction) {
-  const seen = new Set([startId]);
-  let frontier = [startId];
-
-  while (frontier.length && seen.size < MAX_TREE_LOOKUP) {
-    const docs = await Users.find({ id: { $in: frontier } });
-    const next = [];
-
-    for (const doc of docs) {
-      for (const id of doc.family?.[direction] ?? []) {
-        if (!seen.has(id)) {
-          seen.add(id);
-          next.push(id);
-        }
-      }
-    }
-
-    frontier = next;
-  }
-
-  seen.delete(startId);
-  return seen;
-}
-
 async function getAdoptionProblem(parent, child) {
   const parentFamily = parent.family ?? { parents: [], children: [] };
   const childFamily = child.family ?? { parents: [], children: [] };
@@ -120,6 +90,9 @@ async function getAdoptionProblem(parent, child) {
   }
   if (parent.marriage?.partner === child.id) {
     return `<@${child.id}> is your partner, you can't adopt them`;
+  }
+  if ((await getRelation(parent, child)) === "sibling") {
+    return `<@${child.id}> is your sibling, you can't adopt them`;
   }
   if (parentFamily.children.length >= MAX_CHILDREN) {
     return `you already have **${MAX_CHILDREN}** children, that's the maximum`;

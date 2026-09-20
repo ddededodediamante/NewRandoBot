@@ -10,6 +10,7 @@ const {
   EmbedBuilder,
 } = require("discord.js");
 const Users = require("../../models/userSchema.js");
+const { getRelation } = require("../../functions/family.js");
 
 const PROPOSAL_TIMEOUT = 60 * 1000;
 
@@ -59,6 +60,20 @@ async function getUser(id) {
   return user;
 }
 
+const RELATION_LABELS = {
+  parent: "your parent",
+  child: "your child",
+  sibling: "your sibling",
+  ancestor: "your ancestor",
+  descendant: "your descendant",
+};
+
+async function getFamilyProblem(proposer, proposed) {
+  const relation = await getRelation(proposer, proposed);
+  if (!relation) return null;
+  return `<@${proposed.id}> is ${RELATION_LABELS[relation]}, you can't marry family`;
+}
+
 const run = async (interaction = ChatInputCommandInteraction.prototype) => {
   const subcommand = interaction.options.getSubcommand();
 
@@ -103,6 +118,15 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
     if (proposed.marriage?.partner) {
       return interaction.reply({
         content: `❌ ${target} is already married to someone else`,
+        flags: "Ephemeral",
+        allowedMentions: { parse: [] },
+      });
+    }
+
+    const familyProblem = await getFamilyProblem(proposer, proposed);
+    if (familyProblem) {
+      return interaction.reply({
+        content: `❌ ${familyProblem}`,
         flags: "Ephemeral",
         allowedMentions: { parse: [] },
       });
@@ -187,6 +211,15 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
             content:
               "❌ One of you got married to someone else while this proposal was open",
             components: [buildRow(true)],
+          });
+        }
+
+        const staleFamily = await getFamilyProblem(a, b);
+        if (staleFamily) {
+          return await i.update({
+            content: `❌ The marriage can't go through anymore: ${staleFamily}`,
+            components: [buildRow(true)],
+            allowedMentions: { parse: [] },
           });
         }
 
