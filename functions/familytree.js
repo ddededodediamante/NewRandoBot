@@ -316,10 +316,6 @@ async function renderFamilyTree(people, focusId, resolveUser, title) {
     ctx.arc(mx, a.y, 14, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#ed4245";
-    ctx.font = "bold 20px sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("♥", mx, a.y + 10);
   }
 
   const resolved = await Promise.all(
