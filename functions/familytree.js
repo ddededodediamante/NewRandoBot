@@ -195,7 +195,7 @@ function truncateText(ctx, text, maxWidth) {
 }
 
 function drawFallbackAvatar(ctx, x, y, name) {
-  ctx.fillStyle = "#5865f2";
+  ctx.fillStyle = "#535353";
   ctx.beginPath();
   ctx.arc(x, y, NODE / 2, 0, Math.PI * 2);
   ctx.fill();
@@ -218,10 +218,10 @@ async function renderFamilyTree(people, focusId, resolveUser, title) {
   const canvas = createCanvas(canvasW, canvasH);
   const ctx = canvas.getContext("2d");
 
-  ctx.fillStyle = "#1e1f22";
+  ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvasW, canvasH);
 
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = "#000000";
   ctx.font = "bold 32px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -244,7 +244,7 @@ async function renderFamilyTree(people, focusId, resolveUser, title) {
 
     const a = at(p.id);
     const b = at(p.partner);
-    ctx.strokeStyle = "#ed4245";
+    ctx.strokeStyle = "#ff0004";
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
