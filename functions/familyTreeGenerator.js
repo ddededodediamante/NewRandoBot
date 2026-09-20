@@ -3,11 +3,12 @@ const Users = require("../models/userSchema.js");
 
 const MAX_PEOPLE = 60;
 const MAX_OUTPUT_WIDTH = 2400;
+const MAX_OUTPUT_HEIGHT = 900;
 
 const NODE = 80;
 const H_GAP = 36;
 const PARTNER_GAP = 24;
-const V_GAP = 64;
+const MIN_GAP = 44;
 const PAD = 28;
 const LABEL_H = 26;
 const LANE = 14;
@@ -98,26 +99,29 @@ function findBackEdges(people) {
   return back;
 }
 
-function assignGenerations(people, backEdges = new Set()) {
+function tryAssign(people, ignoredPartners) {
   const gen = new Map();
   for (const p of people.values()) gen.set(p.id, 0);
 
-  const isBack = (parentId, childId) => backEdges.has(`${parentId}>${childId}`);
+  const ceiling = people.size;
 
-  const limit = people.size * 2 + 4;
+  const limit = people.size * 3 + 6;
   for (let pass = 0; pass < limit; pass++) {
     let changed = false;
 
     for (const p of people.values()) {
       for (const parentId of p.parents) {
-        if (isBack(parentId, p.id)) continue;
         const want = gen.get(parentId) + 1;
         if (gen.get(p.id) < want) {
           gen.set(p.id, want);
           changed = true;
         }
       }
-      if (p.partner && people.has(p.partner)) {
+      if (
+        p.partner &&
+        people.has(p.partner) &&
+        !ignoredPartners.has(pairKey(p.id, p.partner))
+      ) {
         const top = Math.max(gen.get(p.id), gen.get(p.partner));
         if (gen.get(p.id) !== top || gen.get(p.partner) !== top) {
           gen.set(p.id, top);
@@ -127,13 +131,71 @@ function assignGenerations(people, backEdges = new Set()) {
       }
     }
 
-    if (!changed) break;
+    if ([...gen.values()].some((g) => g >= ceiling)) return { gen, ok: false };
+    if (!changed) return { gen, ok: true };
   }
 
-  return gen;
+  return { gen, ok: false };
 }
 
-function layout(people, gen) {
+const pairKey = (a, b) => [a, b].sort().join(":");
+
+function assignGenerations(people) {
+  const looseCouples = new Set();
+
+  const couples = [];
+  const seen = new Set();
+  for (const p of people.values()) {
+    if (!p.partner || !people.has(p.partner)) continue;
+    const key = pairKey(p.id, p.partner);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    couples.push(key);
+  }
+
+  let result = tryAssign(people, looseCouples);
+
+  while (!result.ok && looseCouples.size < couples.length) {
+    const depth = parentDepth(people);
+    let worst = null;
+    let worstGap = -1;
+    for (const key of couples) {
+      if (looseCouples.has(key)) continue;
+      const [a, b] = key.split(":");
+      const gap = Math.abs(depth.get(a) - depth.get(b));
+      if (gap > worstGap) {
+        worstGap = gap;
+        worst = key;
+      }
+    }
+    if (!worst) break;
+    looseCouples.add(worst);
+    result = tryAssign(people, looseCouples);
+  }
+
+  return { gen: result.gen, looseCouples };
+}
+
+function parentDepth(people) {
+  const depth = new Map();
+  const visiting = new Set();
+  const get = (id) => {
+    if (depth.has(id)) return depth.get(id);
+    if (visiting.has(id)) return 0;
+    visiting.add(id);
+    let d = 0;
+    for (const par of people.get(id).parents) {
+      if (people.has(par)) d = Math.max(d, get(par) + 1);
+    }
+    visiting.delete(id);
+    depth.set(id, d);
+    return d;
+  };
+  for (const id of people.keys()) get(id);
+  return depth;
+}
+
+function layout(people, gen, looseCouples = new Set()) {
   const maxGen = Math.max(...gen.values());
 
   const unitOf = new Map();
@@ -142,7 +204,12 @@ function layout(people, gen) {
   for (const p of people.values()) {
     if (unitOf.has(p.id)) continue;
     const members = [p.id];
-    if (p.partner && people.get(p.partner)?.partner === p.id) {
+
+    if (
+      p.partner &&
+      people.get(p.partner)?.partner === p.id &&
+      !looseCouples.has(pairKey(p.id, p.partner))
+    ) {
       members.push(p.partner);
     }
     const unit = { members, x: 0 };
@@ -212,13 +279,38 @@ function layout(people, gen) {
   const minX = Math.min(...rows.flat().map((u) => u.x));
   for (const u of rows.flat()) u.x -= minX;
 
+  const gapBelow = rows.map((_, g) => {
+    if (g === rows.length - 1) return 0;
+    const lanes = new Set();
+    for (const unit of rows[g + 1]) {
+      const parents = unitParents(unit);
+
+      lanes.add(
+        parents
+          .map((pu) => pu.members.join("+"))
+          .sort()
+          .join("|"),
+      );
+    }
+    lanes.delete("");
+    const laneCount = Math.max(1, lanes.size);
+    return Math.max(MIN_GAP, 30 + laneCount * LANE);
+  });
+
+  const rowTop = [];
+  let yCursor = 0;
+  rows.forEach((_, g) => {
+    rowTop[g] = yCursor;
+    yCursor += NODE + LABEL_H + gapBelow[g];
+  });
+
   const pos = new Map();
   rows.forEach((row, g) => {
     for (const unit of row) {
       unit.members.forEach((id, i) => {
         pos.set(id, {
           x: unit.x + i * (NODE + PARTNER_GAP) + NODE / 2,
-          y: g * (NODE + LABEL_H + V_GAP) + NODE / 2,
+          y: rowTop[g] + NODE / 2,
         });
       });
     }
@@ -263,11 +355,13 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
     });
   }
 
-  const gen = assignGenerations(people);
-  const { pos, width, height } = layout(people, gen);
+  const { gen, looseCouples } = assignGenerations(people);
+  const { pos, width, height } = layout(people, gen, looseCouples);
 
   const backRoom = backEdges.size ? 26 + backEdges.size * 16 + ARROW_H : 0;
-  const canvasW = Math.ceil(width + PAD * 2 + backRoom);
+
+  const leftRoom = looseCouples.size ? 22 + looseCouples.size * 16 + 8 : 0;
+  const canvasW = Math.ceil(width + PAD * 2 + backRoom + leftRoom);
   const canvasH = Math.ceil(height + PAD * 2);
 
   const canvas = createCanvas(canvasW, canvasH);
@@ -276,7 +370,10 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, canvasW, canvasH);
 
-  const at = (id) => ({ x: pos.get(id).x + PAD, y: pos.get(id).y + PAD });
+  const at = (id) => ({
+    x: pos.get(id).x + PAD + leftRoom,
+    y: pos.get(id).y + PAD,
+  });
   const line = (color, points) => {
     ctx.strokeStyle = color;
     ctx.beginPath();
@@ -299,6 +396,7 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
   ctx.lineCap = "round";
 
   const drawnCouples = new Set();
+  let looseIndex = 0;
   for (const p of people.values()) {
     if (!p.partner || !pos.has(p.partner)) continue;
     const key = [p.id, p.partner].sort().join(":");
@@ -306,10 +404,37 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
     drawnCouples.add(key);
     const a = at(p.id);
     const b = at(p.partner);
-    line(PARTNER_COLOR, [
-      [a.x, a.y],
-      [b.x, b.y],
-    ]);
+
+    if (!looseCouples.has(key)) {
+      line(PARTNER_COLOR, [
+        [a.x, a.y],
+        [b.x, b.y],
+      ]);
+      continue;
+    }
+
+    const topY = Math.min(a.y, b.y);
+    const botY = Math.max(a.y, b.y);
+    let leftmost = Math.min(a.x, b.x);
+    for (const id of people.keys()) {
+      const q = at(id);
+      if (q.y >= topY - NODE / 2 && q.y <= botY + NODE / 2) {
+        leftmost = Math.min(leftmost, q.x);
+      }
+    }
+    const left = leftmost - NODE / 2 - 22 - looseIndex * 16;
+    looseIndex++;
+    ctx.strokeStyle = PARTNER_COLOR;
+    ctx.beginPath();
+    ctx.moveTo(a.x - NODE / 2, a.y);
+    ctx.bezierCurveTo(left, a.y, left, b.y, b.x - NODE / 2, b.y);
+    ctx.stroke();
+    ctx.fillStyle = PARTNER_COLOR;
+    for (const pt of [a, b]) {
+      ctx.beginPath();
+      ctx.arc(pt.x - NODE / 2 - 1, pt.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   const families = new Map();
@@ -321,7 +446,7 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
     families.get(key).kids.push(child.id);
   }
 
-  const lanesUsed = new Map(); // parent row -> count
+  const lanesUsed = new Map();
   let colorIndex = 0;
 
   for (const { parents, kids } of families.values()) {
@@ -334,6 +459,7 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
 
     const rowY = Math.max(...pts.map((p) => p.y));
     const anchorX = pts.reduce((sum, p) => sum + p.x, 0) / pts.length;
+
     const anchorY = areCouple ? rowY : rowY + NODE / 2;
 
     const kidPts = kids.map(at);
@@ -403,7 +529,7 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      tx.fillStyle = BACK_COLOR;
+      ctx.fillStyle = BACK_COLOR;
       ctx.beginPath();
       ctx.moveTo(endX + 2, to.y);
       ctx.lineTo(endX + 2 + ARROW_H, to.y - ARROW_W);
@@ -466,8 +592,12 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
     ctx.fillText(label, x, labelY);
   }
 
-  if (canvasW > MAX_OUTPUT_WIDTH) {
-    const scale = MAX_OUTPUT_WIDTH / canvasW;
+  const scale = Math.min(
+    1,
+    MAX_OUTPUT_WIDTH / canvasW,
+    MAX_OUTPUT_HEIGHT / canvasH,
+  );
+  if (scale < 1) {
     const out = createCanvas(
       Math.round(canvasW * scale),
       Math.round(canvasH * scale),
