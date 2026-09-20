@@ -10,7 +10,7 @@ const {
   collectFamily,
   renderFamilyTree,
   MAX_PEOPLE,
-} = require("../../functions/familyTree.js");
+} = require("../../functions/familyTreeGenerator.js");
 
 const data = new SlashCommandBuilder()
   .setName("familytree")
