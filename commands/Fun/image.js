@@ -11,9 +11,12 @@ const {
   MessageFlags,
 } = require("discord.js");
 const { default: axios } = require("axios");
+const sharp = require("sharp");
 
-delete require.cache[require.resolve("../../functions/imageEffects")];
 const effects = require("../../functions/imageEffects");
+
+const MAX_INPUT_BYTES = 7 * 1024 * 1024;
+const MAX_PIXELS = 1280 * 1280;
 
 const data = new SlashCommandBuilder()
   .setName("image")
@@ -50,9 +53,28 @@ const data = new SlashCommandBuilder()
     option.setName("text").setDescription("Optional text some effects need")
   );
 
-async function run(interaction = ChatInputCommandInteraction.prototype) {
-  const MAX_INPUT_BYTES = 8 * 1024 * 1024;
+async function capPixels(buffer, maxPixels = MAX_PIXELS) {
+  try {
+    const meta = await sharp(buffer).metadata();
+    if (!meta.width || !meta.height) return buffer;
+    if (meta.width * meta.height <= maxPixels) return buffer;
 
+    const scale = Math.sqrt(maxPixels / (meta.width * meta.height));
+    return await sharp(buffer)
+      .rotate()
+      .resize({
+        width: Math.max(1, Math.round(meta.width * scale)),
+        height: Math.max(1, Math.round(meta.height * scale)),
+        fit: "inside",
+      })
+      .png()
+      .toBuffer();
+  } catch {
+    return buffer;
+  }
+}
+
+async function run(interaction = ChatInputCommandInteraction.prototype) {
   const effect = interaction.options.getString("effect");
   const attachment = interaction.options.getAttachment("image");
   const user = interaction.options.getUser("user");
@@ -91,16 +113,20 @@ async function run(interaction = ChatInputCommandInteraction.prototype) {
       responseType: "arraybuffer",
     });
 
-    const inputBuffer = Buffer.from(response.data);
+    const inputBuffer = Buffer.isBuffer(response.data)
+      ? response.data
+      : Buffer.from(response.data);
     if (inputBuffer.length > MAX_INPUT_BYTES) {
       const sizeMB = (inputBuffer.length / (1024 * 1024)).toFixed(2);
 
       return interaction.editReply({
-        content: `❌ File too large (${sizeMB} MB). Max allowed is 8 MB`,
+        content: `❌ File too large (${sizeMB} MB). Max allowed is 7 MB`,
       });
     }
 
-    const resultBuffer = await effects[effect](inputBuffer, text);
+    const processingBuffer = await capPixels(inputBuffer);
+
+    const resultBuffer = await effects[effect](processingBuffer, text);
 
     const outputSizeBytes = resultBuffer.length;
     const outputSizeKB = (outputSizeBytes / 1024).toFixed(1);

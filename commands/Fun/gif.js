@@ -55,7 +55,7 @@ function isLinkGIF(link = "") {
 }
 
 async function run(interaction = ChatInputCommandInteraction.prototype) {
-  const MAX_INPUT_BYTES = 16 * 1024 * 1024;
+  const MAX_INPUT_BYTES = 7 * 1024 * 1024;
 
   const effect = interaction.options.getString("effect");
   const attachment = interaction.options.getAttachment("image");
@@ -98,7 +98,7 @@ async function run(interaction = ChatInputCommandInteraction.prototype) {
       const sizeMB = (inputBuffer.length / (1024 * 1024)).toFixed(2);
 
       return interaction.editReply({
-        content: `❌ File too large (${sizeMB} MB). Max allowed is 16 MB`,
+        content: `❌ File too large (${sizeMB} MB). Max allowed is 7 MB`,
       });
     }
 

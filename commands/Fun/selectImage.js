@@ -106,7 +106,11 @@ const run = async (
     });
   }
 
-  interaction.client.imageCache.set(interaction.user.id, imageUrl);
+  const cache = interaction.client.imageCache;
+  cache.set(interaction.user.id, imageUrl);
+  if (cache.size > 1000) {
+    cache.delete(cache.keys().next().value);
+  }
 
   await interaction.reply({
     content: `✅ ${

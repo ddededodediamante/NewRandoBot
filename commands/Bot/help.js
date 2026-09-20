@@ -181,11 +181,15 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
   const replyMessage = reply.resource?.message;
 
   if (pages.length > 1 && replyMessage) {
-    helpPages.set(replyMessage.id, {
+    const id = replyMessage.id;
+    helpPages.set(id, {
       pages,
       pageIndex: 0,
       userId: interaction.user.id,
     });
+    interaction.client.setTimeout(() => {
+      helpPages.delete(id);
+    }, 10 * 60 * 1000);
   }
 };
 
