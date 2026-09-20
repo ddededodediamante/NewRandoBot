@@ -10,7 +10,7 @@ const {
   collectFamily,
   renderFamilyTree,
   MAX_PEOPLE,
-} = require("../../functions/familytree.js");
+} = require("../../functions/familyTree.js");
 
 const data = new SlashCommandBuilder()
   .setName("familytree")
@@ -63,12 +63,7 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
     }
   };
 
-  const buffer = await renderFamilyTree(
-    people,
-    targetUser.id,
-    resolveUser,
-    `${targetUser.displayName ?? targetUser.username}'s Family Tree`,
-  );
+  const buffer = await renderFamilyTree(people, targetUser.id, resolveUser);
 
   const attachment = new AttachmentBuilder(buffer, { name: "familytree.png" });
 

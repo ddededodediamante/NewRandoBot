@@ -4,13 +4,33 @@ const Users = require("../models/userSchema.js");
 const MAX_PEOPLE = 60;
 const MAX_OUTPUT_WIDTH = 2400;
 
-const NODE = 96;
-const H_GAP = 44;
-const PARTNER_GAP = 28;
-const V_GAP = 130;
-const PAD = 60;
-const LABEL_H = 34;
-const TITLE_H = 70;
+const NODE = 80;
+const H_GAP = 36;
+const PARTNER_GAP = 24;
+const V_GAP = 64;
+const PAD = 28;
+const LABEL_H = 26;
+const LANE = 14;
+const BACK_COLOR = "#d6336c";
+const ARROW_W = 7;
+const ARROW_H = 12;
+
+const BG = "#ffffff";
+const TEXT = "#000000";
+const FOCUS_RING = "#e8590c";
+const PARTNER_COLOR = "#e03131";
+const FAMILY_COLORS = [
+  "#1971c2",
+  "#2f9e44",
+  "#f08c00",
+  "#9c36b5",
+  "#0c8599",
+  "#c2255c",
+  "#5c940d",
+  "#6741d9",
+  "#e8590c",
+  "#495057",
+];
 
 async function collectFamily(startId) {
   const people = new Map();
@@ -47,31 +67,57 @@ async function collectFamily(startId) {
   }
 
   for (const p of people.values()) {
-    p.parents = p.parents.filter((id) => people.has(id));
-    p.children = p.children.filter((id) => people.has(id));
-    if (p.partner && !people.has(p.partner)) p.partner = null;
+    p.parents = p.parents.filter((id) => id !== p.id && people.has(id));
+    p.children = p.children.filter((id) => id !== p.id && people.has(id));
+    if (p.partner && (p.partner === p.id || !people.has(p.partner)))
+      p.partner = null;
   }
 
   return { people, truncated };
 }
 
-function assignGenerations(people) {
+function findBackEdges(people) {
+  const back = new Set();
+  const state = new Map();
+
+  const visit = (id) => {
+    state.set(id, 1);
+    for (const childId of people.get(id).children) {
+      if (!people.has(childId)) continue;
+      const s = state.get(childId);
+      if (s === 1) back.add(`${id}>${childId}`);
+      else if (!s) visit(childId);
+    }
+    state.set(id, 2);
+  };
+
+  for (const p of people.values())
+    if (!p.parents.length && !state.has(p.id)) visit(p.id);
+  for (const p of people.values()) if (!state.has(p.id)) visit(p.id);
+
+  return back;
+}
+
+function assignGenerations(people, backEdges = new Set()) {
   const gen = new Map();
   for (const p of people.values()) gen.set(p.id, 0);
 
-  const limit = people.size + 2;
+  const isBack = (parentId, childId) => backEdges.has(`${parentId}>${childId}`);
+
+  const limit = people.size * 2 + 4;
   for (let pass = 0; pass < limit; pass++) {
     let changed = false;
 
     for (const p of people.values()) {
       for (const parentId of p.parents) {
+        if (isBack(parentId, p.id)) continue;
         const want = gen.get(parentId) + 1;
         if (gen.get(p.id) < want) {
           gen.set(p.id, want);
           changed = true;
         }
       }
-      if (p.partner) {
+      if (p.partner && people.has(p.partner)) {
         const top = Math.max(gen.get(p.id), gen.get(p.partner));
         if (gen.get(p.id) !== top || gen.get(p.partner) !== top) {
           gen.set(p.id, top);
@@ -172,7 +218,7 @@ function layout(people, gen) {
       unit.members.forEach((id, i) => {
         pos.set(id, {
           x: unit.x + i * (NODE + PARTNER_GAP) + NODE / 2,
-          y: g * V_GAP + g * (NODE + LABEL_H) + NODE / 2,
+          y: g * (NODE + LABEL_H + V_GAP) + NODE / 2,
         });
       });
     }
@@ -195,45 +241,62 @@ function truncateText(ctx, text, maxWidth) {
 }
 
 function drawFallbackAvatar(ctx, x, y, name) {
-  ctx.fillStyle = "#535353";
+  ctx.fillStyle = "#adb5bd";
   ctx.beginPath();
   ctx.arc(x, y, NODE / 2, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 40px sans-serif";
+  ctx.fillStyle = "#000000";
+  ctx.font = "bold 34px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText((name?.[0] ?? "?").toUpperCase(), x, y + 2);
 }
 
-async function renderFamilyTree(people, focusId, resolveUser, title) {
+async function renderFamilyTree(allPeople, focusId, resolveUser) {
+  const backEdges = findBackEdges(allPeople);
+  const people = new Map();
+  for (const [id, p] of allPeople) {
+    people.set(id, {
+      ...p,
+      parents: p.parents.filter((par) => !backEdges.has(`${par}>${id}`)),
+      children: p.children.filter((kid) => !backEdges.has(`${id}>${kid}`)),
+    });
+  }
+
   const gen = assignGenerations(people);
   const { pos, width, height } = layout(people, gen);
 
-  const canvasW = Math.max(Math.ceil(width + PAD * 2), 480);
-  const canvasH = Math.ceil(height + PAD * 2 + TITLE_H);
-  const offsetX = (canvasW - width) / 2;
-  const offsetY = PAD + TITLE_H;
+  const backRoom = backEdges.size ? 26 + backEdges.size * 16 + ARROW_H : 0;
+  const canvasW = Math.ceil(width + PAD * 2 + backRoom);
+  const canvasH = Math.ceil(height + PAD * 2);
 
   const canvas = createCanvas(canvasW, canvasH);
   const ctx = canvas.getContext("2d");
 
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = BG;
   ctx.fillRect(0, 0, canvasW, canvasH);
 
-  ctx.fillStyle = "#000000";
-  ctx.font = "bold 32px sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(title, canvasW / 2, PAD / 2 + TITLE_H / 2);
+  const at = (id) => ({ x: pos.get(id).x + PAD, y: pos.get(id).y + PAD });
+  const line = (color, points) => {
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    points.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.stroke();
+  };
 
-  const at = (id) => ({
-    x: pos.get(id).x + offsetX,
-    y: pos.get(id).y + offsetY,
-  });
+  const arrowDown = (color, x, y) => {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - ARROW_W, y - ARROW_H);
+    ctx.lineTo(x + ARROW_W, y - ARROW_H);
+    ctx.closePath();
+    ctx.fill();
+  };
 
   ctx.lineWidth = 3;
   ctx.lineJoin = "round";
+  ctx.lineCap = "round";
 
   const drawnCouples = new Set();
   for (const p of people.values()) {
@@ -241,17 +304,13 @@ async function renderFamilyTree(people, focusId, resolveUser, title) {
     const key = [p.id, p.partner].sort().join(":");
     if (drawnCouples.has(key)) continue;
     drawnCouples.add(key);
-
     const a = at(p.id);
     const b = at(p.partner);
-    ctx.strokeStyle = "#ff0004";
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.stroke();
+    line(PARTNER_COLOR, [
+      [a.x, a.y],
+      [b.x, b.y],
+    ]);
   }
-
-  ctx.strokeStyle = "#80848e";
 
   const families = new Map();
   for (const child of people.values()) {
@@ -262,89 +321,125 @@ async function renderFamilyTree(people, focusId, resolveUser, title) {
     families.get(key).kids.push(child.id);
   }
 
+  const lanesUsed = new Map(); // parent row -> count
+  let colorIndex = 0;
+
   for (const { parents, kids } of families.values()) {
+    const color = FAMILY_COLORS[colorIndex++ % FAMILY_COLORS.length];
     const pts = parents.map(at);
-    const [firstId, secondId] = parents;
     const areCouple =
       parents.length === 2 &&
-      people.get(firstId)?.partner === secondId &&
-      people.get(secondId)?.partner === firstId;
+      people.get(parents[0])?.partner === parents[1] &&
+      people.get(parents[1])?.partner === parents[0];
 
-    const anchorX = pts.reduce((s, p) => s + p.x, 0) / pts.length;
     const rowY = Math.max(...pts.map((p) => p.y));
+    const anchorX = pts.reduce((sum, p) => sum + p.x, 0) / pts.length;
     const anchorY = areCouple ? rowY : rowY + NODE / 2;
 
     const kidPts = kids.map(at);
     const topY = Math.min(...kidPts.map((k) => k.y)) - NODE / 2;
-    const busY = anchorY + (topY - anchorY) / 2 + (areCouple ? NODE / 4 : 0);
 
+    const lane = lanesUsed.get(rowY) ?? 0;
+    lanesUsed.set(rowY, lane + 1);
+    const channelTop = rowY + NODE / 2 + LABEL_H + 6;
+    const busY = Math.min(channelTop + lane * LANE, topY - 8);
+
+    const belowLabelY = rowY + NODE / 2 + LABEL_H;
     if (!areCouple && parents.length === 2) {
-      for (const p of pts) {
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y + NODE / 2);
-        ctx.lineTo(p.x, busY);
-        ctx.stroke();
-      }
+      for (const p of pts)
+        line(color, [
+          [p.x, belowLabelY],
+          [p.x, busY],
+        ]);
+    } else if (areCouple) {
+      line(color, [
+        [anchorX, anchorY],
+        [anchorX, busY],
+      ]);
     } else {
-      ctx.beginPath();
-      ctx.moveTo(anchorX, anchorY);
-      ctx.lineTo(anchorX, busY);
-      ctx.stroke();
+      line(color, [
+        [anchorX, belowLabelY],
+        [anchorX, busY],
+      ]);
     }
 
     const xs = [anchorX, ...kidPts.map((k) => k.x)];
-    ctx.beginPath();
-    ctx.moveTo(Math.min(...xs), busY);
-    ctx.lineTo(Math.max(...xs), busY);
-    ctx.stroke();
+    line(color, [
+      [Math.min(...xs), busY],
+      [Math.max(...xs), busY],
+    ]);
 
     for (const k of kidPts) {
-      ctx.beginPath();
-      ctx.moveTo(k.x, busY);
-      ctx.lineTo(k.x, k.y - NODE / 2);
-      ctx.stroke();
+      const tipY = k.y - NODE / 2 - 3;
+      line(color, [
+        [k.x, busY],
+        [k.x, tipY - ARROW_H + 1],
+      ]);
+      arrowDown(color, k.x, tipY);
     }
   }
 
-  for (const key of drawnCouples) {
-    const [idA, idB] = key.split(":");
-    const a = at(idA);
-    const b = at(idB);
-    const mx = (a.x + b.x) / 2;
-    ctx.fillStyle = "#1f1212";
-    ctx.beginPath();
-    ctx.arc(mx, a.y, 14, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#ff0004";
+  if (backEdges.size) {
+    const bulge = new Map();
+    for (const edge of backEdges) {
+      const [parentId, childId] = edge.split(">");
+      if (!pos.has(parentId) || !pos.has(childId)) continue;
+
+      const from = at(parentId);
+      const to = at(childId);
+
+      const n = bulge.get("k") ?? 0;
+      bulge.set("k", n + 1);
+      const side = Math.max(from.x, to.x) + NODE / 2 + 26 + n * 16;
+
+      const startX = from.x + NODE / 2;
+      const endX = to.x + NODE / 2;
+
+      ctx.strokeStyle = BACK_COLOR;
+      ctx.setLineDash([7, 5]);
+      ctx.beginPath();
+      ctx.moveTo(startX, from.y);
+      ctx.bezierCurveTo(side, from.y, side, to.y, endX + 2, to.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      tx.fillStyle = BACK_COLOR;
+      ctx.beginPath();
+      ctx.moveTo(endX + 2, to.y);
+      ctx.lineTo(endX + 2 + ARROW_H, to.y - ARROW_W);
+      ctx.lineTo(endX + 2 + ARROW_H, to.y + ARROW_W);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
-  const resolved = await Promise.all(
-    [...people.keys()].map(async (id) => [id, await resolveUser(id)]),
+  const ids = [...people.keys()];
+  const info = new Map(
+    await Promise.all(ids.map(async (id) => [id, await resolveUser(id)])),
   );
-  const info = new Map(resolved);
-
-  const avatars = await Promise.all(
-    [...people.keys()].map(async (id) => {
-      const url = info.get(id)?.avatarURL;
-      if (!url) return [id, null];
-      try {
-        return [id, await loadImage(url)];
-      } catch {
-        return [id, null];
-      }
-    }),
+  const avatarMap = new Map(
+    await Promise.all(
+      ids.map(async (id) => {
+        const url = info.get(id)?.avatarURL;
+        if (!url) return [id, null];
+        try {
+          return [id, await loadImage(url)];
+        } catch {
+          return [id, null];
+        }
+      }),
+    ),
   );
-  const avatarMap = new Map(avatars);
 
-  for (const id of people.keys()) {
+  for (const id of ids) {
     const { x, y } = at(id);
     const name = info.get(id)?.name ?? "Unknown";
     const img = avatarMap.get(id);
     const isFocus = id === focusId;
 
-    ctx.fillStyle = isFocus ? "#ffe448" : "#50535a";
+    ctx.fillStyle = isFocus ? FOCUS_RING : "#000000";
     ctx.beginPath();
-    ctx.arc(x, y, NODE / 2 + (isFocus ? 5 : 3), 0, Math.PI * 2);
+    ctx.arc(x, y, NODE / 2 + (isFocus ? 4 : 2), 0, Math.PI * 2);
     ctx.fill();
 
     ctx.save();
@@ -352,19 +447,23 @@ async function renderFamilyTree(people, focusId, resolveUser, title) {
     ctx.arc(x, y, NODE / 2, 0, Math.PI * 2);
     ctx.closePath();
     ctx.clip();
-    if (img) ctx.drawImage(img, x - NODE / 2, y - NODE / 2, NODE, NODE);
+    if (img) {
+      ctx.drawImage(img, x - NODE / 2, y - NODE / 2, NODE, NODE);
+    } else {
+      ctx.fillStyle = BG;
+      ctx.fillRect(x - NODE / 2, y - NODE / 2, NODE, NODE);
+    }
     ctx.restore();
     if (!img) drawFallbackAvatar(ctx, x, y, name);
 
-    ctx.fillStyle = isFocus ? "#fee75c" : "#dbdee1";
-    ctx.font = `${isFocus ? "bold " : ""}18px sans-serif`;
+    ctx.font = `${isFocus ? "bold " : ""}16px sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.fillText(
-      truncateText(ctx, name, NODE + H_GAP - 6),
-      x,
-      y + NODE / 2 + 10,
-    );
+    const label = truncateText(ctx, name, NODE + H_GAP - 4);
+    const labelY = y + NODE / 2 + 8;
+
+    ctx.fillStyle = TEXT;
+    ctx.fillText(label, x, labelY);
   }
 
   if (canvasW > MAX_OUTPUT_WIDTH) {
