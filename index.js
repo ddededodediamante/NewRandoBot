@@ -100,6 +100,7 @@ client.once(Events.ClientReady, async () => {
 
   require("./functions/tempBanChecker")(client);
   require("./functions/lockdownChecker")(client);
+  require("./functions/reminderChecker")(client);
 });
 
 client

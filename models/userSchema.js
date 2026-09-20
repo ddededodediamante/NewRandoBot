@@ -38,6 +38,10 @@ const UserSchema = new mongoose.Schema({
       },
     },
   },
+  marriage: {
+    partner: { type: String, default: null },
+    marriedAt: { type: Date, default: null },
+  },
   createdAt: {
     type: Date,
     default: Date.now,
