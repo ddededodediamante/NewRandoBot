@@ -202,6 +202,5 @@ module.exports = {
   run,
   helpPages,
   buildEmbed,
-  buildRow,
-  removeUserHelpPages,
+  buildRow
 };
