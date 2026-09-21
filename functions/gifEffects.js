@@ -1,6 +1,10 @@
 const { toValidPath } = require("./path");
 const { createCanvas, loadImage, ImageData } = require("@napi-rs/canvas");
-const { GIFEncoder: createGifEncoder, quantize, applyPalette } = require("gifenc");
+const {
+  GIFEncoder: createGifEncoder,
+  quantize,
+  applyPalette,
+} = require("gifenc");
 const sharp = require("sharp");
 
 if (typeof document === "undefined") {
@@ -387,18 +391,26 @@ async function waveDistortAnimated(buffer, isGif) {
     const stride = width * 4;
 
     for (let y = 0; y < height; y++) {
-      const offsetX = Math.round(Math.sin(y * frequency + phaseOffset) * amplitude);
+      const offsetX = Math.round(
+        Math.sin(y * frequency + phaseOffset) * amplitude,
+      );
       const rowStart = y * stride;
 
       if (offsetX === 0) {
         dst.set(src.subarray(rowStart, rowStart + stride), rowStart);
       } else if (offsetX > 0) {
         const count = (width - offsetX) * 4;
-        dst.set(src.subarray(rowStart, rowStart + count), rowStart + offsetX * 4);
+        dst.set(
+          src.subarray(rowStart, rowStart + count),
+          rowStart + offsetX * 4,
+        );
       } else {
         const start = -offsetX;
         const count = (width - start) * 4;
-        dst.set(src.subarray(rowStart + start * 4, rowStart + start * 4 + count), rowStart);
+        dst.set(
+          src.subarray(rowStart + start * 4, rowStart + start * 4 + count),
+          rowStart,
+        );
       }
     }
 
@@ -681,6 +693,53 @@ async function getThisManA(buffer, isGif) {
   return encoder.out.getData();
 }
 
+async function notVeryOfyou(buffer, isGif) {
+  const spriteImage = await loadImage(
+    toValidPath("../images/not-very-of-you.png"),
+  );
+  const spriteWidth = 498;
+  const spriteHeight = 377;
+  const spriteCount = 57;
+
+  const frames = await loadFrames(buffer, isGif);
+
+  const framesLength = Array.isArray(frames) ? frames.length : 1;
+
+  const encoder = createEncoder(spriteWidth, spriteHeight);
+  encoder.setDelay(30);
+  encoder.start();
+
+  const canvas = createCanvas(spriteWidth, spriteHeight);
+  const ctx = canvas.getContext("2d", { alpha: false });
+
+  for (let i = 0; i < spriteCount; i++) {
+    const frame = isGif
+      ? await frames[getFrameIndex(i, spriteCount, framesLength)].getImage()
+      : frames;
+
+    ctx.clearRect(0, 0, spriteWidth, spriteHeight);
+
+    ctx.drawImage(
+      spriteImage,
+      (i % spriteCount) * spriteWidth,
+      0,
+      spriteWidth,
+      spriteHeight,
+      0,
+      0,
+      spriteWidth,
+      spriteHeight,
+    );
+
+    ctx.drawImage(frame, 236, 24.5, 106, 47.5);
+
+    encoder.addFrame(ctx);
+  }
+
+  encoder.finish();
+  return encoder.out.getData();
+}
+
 module.exports = {
   rainbow,
   boykisser,
@@ -694,4 +753,5 @@ module.exports = {
   scaryAttack,
   heartbeat,
   getThisManA,
+  notVeryOfyou,
 };
