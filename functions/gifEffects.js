@@ -693,7 +693,7 @@ async function getThisManA(buffer, isGif) {
   return encoder.out.getData();
 }
 
-async function notVeryOfyou(buffer, isGif) {
+async function notVeryOfYou(buffer, isGif) {
   const spriteImage = await loadImage(
     toValidPath("../images/not-very-of-you.png"),
   );
@@ -753,5 +753,5 @@ module.exports = {
   scaryAttack,
   heartbeat,
   getThisManA,
-  notVeryOfyou,
+  notVeryOfYou,
 };

@@ -11,7 +11,7 @@ const Server = require("../../models/serverSchema.js");
 
 const data = new SlashCommandBuilder()
   .setName("farewell")
-  .setDescription("Util | Farewell new users with custom messages")
+  .setDescription("Util | Farewell leaving users with custom messages")
   .setContexts(InteractionContextType.Guild)
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
