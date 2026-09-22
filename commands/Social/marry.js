@@ -369,9 +369,10 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
         okayBystanders.stop();
         if (!okayAnswered) {
           releaseLocks();
-          await interaction
-            .followUp({
+          await okayMsg
+            .edit({
               content: `⏳ <@${currentPartnerId}> didn't answer in time, the marriage didn't happen`,
+              components: [buildRow2(true)],
               allowedMentions: { parse: [] },
             })
             .catch(() => {});
