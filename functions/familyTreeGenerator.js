@@ -150,9 +150,9 @@ function coupleColor(key) {
   }
   h >>>= 0;
 
-  const hue = ((h % 61) - 30 + 360) % 360;
-  const sat = 60 + ((h >>> 8) % 25);
-  const light = 42 + ((h >>> 16) % 14);
+  const hue = ((h % 91) - 45 + 360) % 360;
+  const sat = 42 + ((h >>> 8) % 20);
+  const light = 52 + ((h >>> 16) % 12);
 
   const s = sat / 100;
   const l = light / 100;
@@ -670,7 +670,15 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
     ctx.strokeStyle = c.color;
     ctx.beginPath();
     ctx.moveTo(a.x + (dir * NODE) / 2, a.y);
-    ctx.bezierCurveTo(control, a.y, control, b.y, b.x + (dir * NODE) / 2, b.y);
+    const dy = b.y - a.y;
+    ctx.bezierCurveTo(
+      control,
+      a.y + dy * 0.2,
+      control,
+      b.y - dy * 0.2,
+      b.x + (dir * NODE) / 2,
+      b.y,
+    );
     ctx.stroke();
     ctx.fillStyle = c.color;
     for (const pt of [a, b]) {
