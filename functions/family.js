@@ -26,6 +26,31 @@ async function walkTree(startId, direction) {
   return seen;
 }
 
+async function walkTreeDepths(startId, direction) {
+  const depth = new Map([[startId, 0]]);
+  let frontier = [startId];
+
+  while (frontier.length && depth.size < MAX_TREE_LOOKUP) {
+    const docs = await Users.find({ id: { $in: frontier } });
+    const next = [];
+
+    for (const doc of docs) {
+      const d = depth.get(doc.id);
+      for (const id of doc.family?.[direction] ?? []) {
+        if (!depth.has(id)) {
+          depth.set(id, d + 1);
+          next.push(id);
+        }
+      }
+    }
+
+    frontier = next;
+  }
+
+  depth.delete(startId);
+  return depth;
+}
+
 async function getRelation(me, other) {
   const myParents = me.family?.parents ?? [];
   const myChildren = me.family?.children ?? [];
@@ -42,4 +67,4 @@ async function getRelation(me, other) {
   return null;
 }
 
-module.exports = { walkTree, getRelation };
+module.exports = { walkTree, walkTreeDepths, getRelation };

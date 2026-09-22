@@ -13,6 +13,7 @@ const Users = require("../../models/userSchema.js");
 const { getRelation } = require("../../functions/family.js");
 
 const PROPOSAL_TIMEOUT = 2 * 60 * 1000;
+const MAX_PARTNERS = 2;
 
 const data = new SlashCommandBuilder()
   .setName("marry")
@@ -49,7 +50,15 @@ const data = new SlashCommandBuilder()
       ),
   )
   .addSubcommand((sub) =>
-    sub.setName("divorce").setDescription("Divorce your partner"),
+    sub
+      .setName("divorce")
+      .setDescription("Divorce one of your partners")
+      .addUserOption((opt) =>
+        opt
+          .setName("partner")
+          .setDescription("Which partner to divorce (default: your only one)")
+          .setRequired(false),
+      ),
   );
 
 const pendingProposals = new Set();
@@ -94,32 +103,46 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
       });
     }
 
-    if (
-      pendingProposals.has(interaction.user.id) ||
-      pendingProposals.has(target.id)
-    ) {
-      return interaction.reply({
-        content: "❌ One of you already has a pending proposal, wait a moment",
-        flags: "Ephemeral",
-      });
-    }
-
     const proposer = await getUser(interaction.user.id);
     const proposed = await getUser(target.id);
 
-    if (proposer.marriage?.partner) {
+    const proposerPartners = proposer.marriage?.partners ?? [];
+    const proposedPartners = proposed.marriage?.partners ?? [];
+
+    if (proposerPartners.some((p) => p.id === target.id)) {
       return interaction.reply({
-        content: `❌ You're already married to <@${proposer.marriage.partner}>. Use **/marry divorce** first`,
+        content: `❌ You're already married to ${target}`,
         flags: "Ephemeral",
         allowedMentions: { parse: [] },
       });
     }
 
-    if (proposed.marriage?.partner) {
+    if (proposerPartners.length >= MAX_PARTNERS) {
       return interaction.reply({
-        content: `❌ ${target} is already married to someone else`,
+        content: `❌ You already have **${MAX_PARTNERS}** partners, that's the maximum. Use **/marry divorce** first`,
+        flags: "Ephemeral",
+      });
+    }
+
+    if (proposedPartners.length >= MAX_PARTNERS) {
+      return interaction.reply({
+        content: `❌ ${target} already has **${MAX_PARTNERS}** partners, that's the maximum`,
         flags: "Ephemeral",
         allowedMentions: { parse: [] },
+      });
+    }
+
+    // A second marriage needs the current partner's blessing too.
+    const currentPartnerId = proposerPartners[0]?.id ?? null;
+
+    const locked = [interaction.user.id, target.id, currentPartnerId].filter(
+      Boolean,
+    );
+    if (locked.some((id) => pendingProposals.has(id))) {
+      return interaction.reply({
+        content:
+          "❌ One of you already has a pending proposal, wait a moment",
+        flags: "Ephemeral",
       });
     }
 
@@ -132,36 +155,39 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
       });
     }
 
-    const buildRow = (disabled = false) =>
+    const buildRow = (idPrefix, disabled = false) =>
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(`marry_accept_${interaction.id}`)
+          .setCustomId(`${idPrefix}_accept_${interaction.id}`)
           .setLabel("Accept")
           .setEmoji("💍")
           .setStyle(ButtonStyle.Success)
           .setDisabled(disabled),
         new ButtonBuilder()
-          .setCustomId(`marry_decline_${interaction.id}`)
+          .setCustomId(`${idPrefix}_decline_${interaction.id}`)
           .setLabel("Decline")
           .setEmoji("💔")
           .setStyle(ButtonStyle.Danger)
           .setDisabled(disabled),
       );
 
-    pendingProposals.add(interaction.user.id);
-    pendingProposals.add(target.id);
+    for (const id of locked) pendingProposals.add(id);
+    const releaseLocks = () => {
+      for (const id of locked) pendingProposals.delete(id);
+    };
+
+    const buildRow1 = (disabled) => buildRow("marry", disabled);
 
     const reply = await interaction.reply({
       content: `💍 ${target}, **${interaction.user.displayName}** is asking for your hand in marriage! Do you accept?`,
-      components: [buildRow()],
+      components: [buildRow1()],
       allowedMentions: { users: [target.id] },
       withResponse: true,
     });
 
     const message = reply.resource?.message;
     if (!message) {
-      pendingProposals.delete(interaction.user.id);
-      pendingProposals.delete(target.id);
+      releaseLocks();
       return;
     }
 
@@ -196,69 +222,204 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
 
     let answered = false;
 
+    // Runs once the target has accepted: finalizes right away, unless the
+    // proposer already has a partner, in which case that partner must also
+    // agree before anything is saved. Returns true while a second approval
+    // step is still pending (locks stay held), false once fully settled.
+    const finalize = async (i) => {
+      const [a, b] = await Promise.all([
+        getUser(interaction.user.id),
+        getUser(target.id),
+      ]);
+      const aPartners = a.marriage?.partners ?? [];
+      const bPartners = b.marriage?.partners ?? [];
+
+      if (
+        aPartners.length >= MAX_PARTNERS ||
+        bPartners.length >= MAX_PARTNERS ||
+        aPartners.some((p) => p.id === target.id)
+      ) {
+        await i.update({
+          content:
+            "❌ One of you got married to someone else while this proposal was open",
+          components: [buildRow1(true)],
+        });
+        return false;
+      }
+
+      const staleFamily = await getFamilyProblem(a, b);
+      if (staleFamily) {
+        await i.update({
+          content: `❌ The marriage can't go through anymore: ${staleFamily}`,
+          components: [buildRow1(true)],
+          allowedMentions: { parse: [] },
+        });
+        return false;
+      }
+
+      if (!currentPartnerId || !aPartners.some((p) => p.id === currentPartnerId)) {
+        const marriedAt = new Date();
+        a.marriage.partners = [...aPartners, { id: target.id, marriedAt }];
+        b.marriage.partners = [...bPartners, { id: interaction.user.id, marriedAt }];
+        await Promise.all([a.save(), b.save()]);
+
+        await i.update({
+          content: `💒 ${interaction.user} and ${target} are now married! Congratulations! 🎉`,
+          components: [buildRow1(true)],
+          allowedMentions: { users: [interaction.user.id, target.id] },
+        });
+        return false;
+      }
+
+      await i.update({
+        content: `💍 ${target} accepted! Now waiting on <@${currentPartnerId}>, **${interaction.user.displayName}**'s current partner, to agree to this marriage too...`,
+        components: [buildRow1(true)],
+        allowedMentions: { parse: [] },
+      });
+
+      const buildRow2 = (disabled) => buildRow("marry_okay", disabled);
+
+      const okayReply = await interaction.followUp({
+        content: `💍 <@${currentPartnerId}>, **${interaction.user.displayName}** wants to also marry ${target}. Are you okay with that?`,
+        components: [buildRow2()],
+        allowedMentions: { users: [currentPartnerId] },
+        withResponse: true,
+      });
+
+      const okayMsg = okayReply.resource?.message;
+      if (!okayMsg) {
+        releaseLocks();
+        return false;
+      }
+
+      const okayCollector = okayMsg.createMessageComponentCollector({
+        componentType: ComponentType.Button,
+        filter: (j) => j.user.id === currentPartnerId,
+        time: PROPOSAL_TIMEOUT,
+        max: 1,
+      });
+
+      const okayBystanders = okayMsg.createMessageComponentCollector({
+        componentType: ComponentType.Button,
+        filter: (j) => j.user.id !== currentPartnerId,
+        time: PROPOSAL_TIMEOUT,
+      });
+      okayBystanders.on("collect", (j) =>
+        j
+          .reply({
+            content: "❌ This isn't for you",
+            flags: "Ephemeral",
+          })
+          .catch(() => {}),
+      );
+
+      let okayAnswered = false;
+
+      okayCollector.on("collect", async (j) => {
+        okayAnswered = true;
+        okayBystanders.stop();
+
+        try {
+          if (j.customId.startsWith("marry_okay_decline_")) {
+            return await j.update({
+              content: `💔 <@${currentPartnerId}> didn't agree, so the marriage between **${interaction.user.displayName}** and ${target} didn't happen`,
+              components: [buildRow2(true)],
+              allowedMentions: { parse: [] },
+            });
+          }
+
+          const [freshA, freshB] = await Promise.all([
+            getUser(interaction.user.id),
+            getUser(target.id),
+          ]);
+          const freshAPartners = freshA.marriage?.partners ?? [];
+          const freshBPartners = freshB.marriage?.partners ?? [];
+
+          if (
+            freshAPartners.length >= MAX_PARTNERS ||
+            freshBPartners.length >= MAX_PARTNERS ||
+            freshAPartners.some((p) => p.id === target.id)
+          ) {
+            return await j.update({
+              content:
+                "❌ One of you got married to someone else while this was pending",
+              components: [buildRow2(true)],
+            });
+          }
+
+          const marriedAt = new Date();
+          freshA.marriage.partners = [
+            ...freshAPartners,
+            { id: target.id, marriedAt },
+          ];
+          freshB.marriage.partners = [
+            ...freshBPartners,
+            { id: interaction.user.id, marriedAt },
+          ];
+          await Promise.all([freshA.save(), freshB.save()]);
+
+          await j.update({
+            content: `💒 ${interaction.user} and ${target} are now married! Congratulations! 🎉`,
+            components: [buildRow2(true)],
+            allowedMentions: { users: [interaction.user.id, target.id] },
+          });
+        } catch (err) {
+          console.error("Marry partner-approval error:", err);
+        } finally {
+          releaseLocks();
+        }
+      });
+
+      okayCollector.on("end", async () => {
+        okayBystanders.stop();
+        if (!okayAnswered) {
+          releaseLocks();
+          await interaction
+            .followUp({
+              content: `⏳ <@${currentPartnerId}> didn't answer in time, the marriage didn't happen`,
+              allowedMentions: { parse: [] },
+            })
+            .catch(() => {});
+        }
+      });
+
+      return true;
+    };
+
     collector.on("collect", async (i) => {
       answered = true;
       bystanders.stop();
 
       try {
         if (i.customId.startsWith("marry_decline_")) {
+          releaseLocks();
           return await i.update({
             content:
               i.user.id === target.id
                 ? `💔 ${target} declined **${interaction.user.displayName}**'s proposal...`
                 : `💔 **${interaction.user.displayName}** withdrew their proposal to ${target}...`,
-            components: [buildRow(true)],
+            components: [buildRow1(true)],
             allowedMentions: { parse: [] },
           });
         }
 
-        const [a, b] = await Promise.all([
-          getUser(interaction.user.id),
-          getUser(target.id),
-        ]);
-
-        if (a.marriage?.partner || b.marriage?.partner) {
-          return await i.update({
-            content:
-              "❌ One of you got married to someone else while this proposal was open",
-            components: [buildRow(true)],
-          });
-        }
-
-        const staleFamily = await getFamilyProblem(a, b);
-        if (staleFamily) {
-          return await i.update({
-            content: `❌ The marriage can't go through anymore: ${staleFamily}`,
-            components: [buildRow(true)],
-            allowedMentions: { parse: [] },
-          });
-        }
-
-        const marriedAt = new Date();
-        a.marriage = { partner: target.id, marriedAt };
-        b.marriage = { partner: interaction.user.id, marriedAt };
-        await Promise.all([a.save(), b.save()]);
-
-        await i.update({
-          content: `💒 ${interaction.user} and ${target} are now married! Congratulations! 🎉`,
-          components: [buildRow(true)],
-          allowedMentions: { users: [interaction.user.id, target.id] },
-        });
+        const pending = await finalize(i);
+        if (!pending) releaseLocks();
       } catch (err) {
         console.error("Marry accept error:", err);
+        releaseLocks();
       }
     });
 
     collector.on("end", async () => {
-      pendingProposals.delete(interaction.user.id);
-      pendingProposals.delete(target.id);
       bystanders.stop();
 
       if (!answered) {
+        releaseLocks();
         await interaction
           .editReply({
             content: `⏳ ${target} didn't answer in time, the proposal expired`,
-            components: [buildRow(true)],
+            components: [buildRow1(true)],
             allowedMentions: { parse: [] },
           })
           .catch(() => {});
@@ -272,23 +433,29 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
     const targetUser =
       interaction.options.getUser("target") || interaction.user;
     const account = await getUser(targetUser.id);
-    const { partner, marriedAt } = account.marriage ?? {};
+    const partners = account.marriage?.partners ?? [];
 
     const embed = new EmbedBuilder()
       .setTitle(`${targetUser.username}'s Marriage`)
       .setThumbnail(targetUser.displayAvatarURL({ size: 512 }));
 
-    if (!partner) {
+    if (!partners.length) {
       embed.setDescription("💔 Not married");
     } else {
-      const unix = marriedAt ? Math.floor(marriedAt.getTime() / 1000) : null;
       embed.setDescription(
-        [
-          `💍 **Married to:** <@${partner}>`,
-          unix ? `**Since:** <t:${unix}:D> (<t:${unix}:R>)` : null,
-        ]
-          .filter(Boolean)
-          .join("\n"),
+        partners
+          .map(({ id, marriedAt }) => {
+            const unix = marriedAt
+              ? Math.floor(marriedAt.getTime() / 1000)
+              : null;
+            return [
+              `💍 **Married to:** <@${id}>`,
+              unix ? `**Since:** <t:${unix}:D> (<t:${unix}:R>)` : null,
+            ]
+              .filter(Boolean)
+              .join("\n");
+          })
+          .join("\n\n"),
       );
     }
 
@@ -299,22 +466,45 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
   }
 
   if (subcommand === "divorce") {
+    const partnerOption = interaction.options.getUser("partner");
     const account = await getUser(interaction.user.id);
-    const partnerId = account.marriage?.partner;
+    const partners = account.marriage?.partners ?? [];
 
-    if (!partnerId) {
+    if (!partners.length) {
       return interaction.reply({
         content: "❌ You're not married to anyone",
         flags: "Ephemeral",
       });
     }
 
+    let partnerId = partnerOption?.id;
+    if (!partnerId) {
+      if (partners.length > 1) {
+        return interaction.reply({
+          content: `❌ You have multiple partners (${partners
+            .map((p) => `<@${p.id}>`)
+            .join(", ")}), specify which one with the **partner** option`,
+          flags: "Ephemeral",
+          allowedMentions: { parse: [] },
+        });
+      }
+      partnerId = partners[0].id;
+    }
+
+    if (!partners.some((p) => p.id === partnerId)) {
+      return interaction.reply({
+        content: `❌ You're not married to <@${partnerId}>`,
+        flags: "Ephemeral",
+        allowedMentions: { parse: [] },
+      });
+    }
+
     const partner = await getUser(partnerId);
 
-    account.marriage = { partner: null, marriedAt: null };
-    if (partner.marriage?.partner === interaction.user.id) {
-      partner.marriage = { partner: null, marriedAt: null };
-    }
+    account.marriage.partners = partners.filter((p) => p.id !== partnerId);
+    partner.marriage.partners = (partner.marriage?.partners ?? []).filter(
+      (p) => p.id !== interaction.user.id,
+    );
 
     await Promise.all([account.save(), partner.save()]);
 

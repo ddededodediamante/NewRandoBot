@@ -39,8 +39,15 @@ const UserSchema = new mongoose.Schema({
     },
   },
   marriage: {
-    partner: { type: String, default: null },
-    marriedAt: { type: Date, default: null },
+    partners: {
+      type: [
+        {
+          id: { type: String, required: true },
+          marriedAt: { type: Date, default: null },
+        },
+      ],
+      default: [],
+    },
   },
   family: {
     parents: { type: [String], default: [] },

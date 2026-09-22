@@ -55,11 +55,11 @@ async function collectFamily(startId) {
         id,
         parents: [...(doc?.family?.parents ?? [])],
         children: [...(doc?.family?.children ?? [])],
-        partner: doc?.marriage?.partner ?? null,
+        partners: [...(doc?.marriage?.partners ?? [])].map((p) => p.id),
       };
       people.set(id, node);
 
-      for (const rel of [...node.parents, ...node.children, node.partner]) {
+      for (const rel of [...node.parents, ...node.children, ...node.partners]) {
         if (rel && !people.has(rel)) next.push(rel);
       }
     }
@@ -70,8 +70,7 @@ async function collectFamily(startId) {
   for (const p of people.values()) {
     p.parents = p.parents.filter((id) => id !== p.id && people.has(id));
     p.children = p.children.filter((id) => id !== p.id && people.has(id));
-    if (p.partner && (p.partner === p.id || !people.has(p.partner)))
-      p.partner = null;
+    p.partners = p.partners.filter((id) => id !== p.id && people.has(id));
   }
 
   return { people, truncated };
@@ -117,15 +116,16 @@ function tryAssign(people, ignoredPartners) {
           changed = true;
         }
       }
-      if (
-        p.partner &&
-        people.has(p.partner) &&
-        !ignoredPartners.has(pairKey(p.id, p.partner))
-      ) {
-        const top = Math.max(gen.get(p.id), gen.get(p.partner));
-        if (gen.get(p.id) !== top || gen.get(p.partner) !== top) {
+      for (const partnerId of p.partners) {
+        if (
+          !people.has(partnerId) ||
+          ignoredPartners.has(pairKey(p.id, partnerId))
+        )
+          continue;
+        const top = Math.max(gen.get(p.id), gen.get(partnerId));
+        if (gen.get(p.id) !== top || gen.get(partnerId) !== top) {
           gen.set(p.id, top);
-          gen.set(p.partner, top);
+          gen.set(partnerId, top);
           changed = true;
         }
       }
@@ -167,18 +167,26 @@ function coupleColor(key) {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
+function mutualCouples(people) {
+  const seen = new Set();
+  const list = [];
+  for (const p of people.values()) {
+    for (const partnerId of p.partners) {
+      const mate = people.get(partnerId);
+      if (!mate || !mate.partners.includes(p.id)) continue;
+      const key = pairKey(p.id, partnerId);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      list.push({ a: p.id, b: partnerId, key });
+    }
+  }
+  return list;
+}
+
 function assignGenerations(people) {
   const looseCouples = new Set();
 
-  const couples = [];
-  const seen = new Set();
-  for (const p of people.values()) {
-    if (!p.partner || !people.has(p.partner)) continue;
-    const key = pairKey(p.id, p.partner);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    couples.push(key);
-  }
+  const couples = mutualCouples(people).map((c) => c.key);
 
   let result = tryAssign(people, looseCouples);
 
@@ -228,16 +236,24 @@ function layout(people, gen, looseCouples = new Set()) {
   const unitOf = new Map();
   const rows = Array.from({ length: maxGen + 1 }, () => []);
 
+  for (const p of people.values()) p.unitPartner = null;
+
   for (const p of people.values()) {
     if (unitOf.has(p.id)) continue;
     const members = [p.id];
 
-    if (
-      p.partner &&
-      people.get(p.partner)?.partner === p.id &&
-      !looseCouples.has(pairKey(p.id, p.partner))
-    ) {
-      members.push(p.partner);
+    const mate = p.partners.find(
+      (id) =>
+        people.has(id) &&
+        !unitOf.has(id) &&
+        people.get(id).partners.includes(p.id) &&
+        !looseCouples.has(pairKey(p.id, id)),
+    );
+
+    if (mate) {
+      members.push(mate);
+      p.unitPartner = mate;
+      people.get(mate).unitPartner = p.id;
     }
     const unit = { members, x: 0 };
     for (const m of members) unitOf.set(m, unit);
@@ -354,7 +370,7 @@ function layout(people, gen, looseCouples = new Set()) {
 
   const rowCenters = rowTop.map((t) => t + NODE / 2);
 
-  return { pos, width, height, rowCenters };
+  return { pos, width, height, rowCenters, gapBelow };
 }
 
 function truncateText(ctx, text, maxWidth) {
@@ -413,9 +429,9 @@ function planChannels(people, pos, looseCouples, families, labelHalf) {
       for (const m of members) {
         const half = Math.max(NODE / 2 + 5, labelHalf(m.id) + 3);
         blocks.push([m.x - half, m.x + half]);
-        const partner = people.get(m.id).partner;
-        const mate = partner && members.find((o) => o.id === partner);
-        if (mate && m.x < mate.x && !looseCouples.has(pairKey(m.id, partner))) {
+        const unitPartner = people.get(m.id).unitPartner;
+        const mate = unitPartner && members.find((o) => o.id === unitPartner);
+        if (mate && m.x < mate.x) {
           blocks.push([m.x, mate.x]);
         }
       }
@@ -517,7 +533,11 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
   }
 
   const { gen, looseCouples } = assignGenerations(people);
-  const { pos, width, height, rowCenters } = layout(people, gen, looseCouples);
+  const { pos, width, height, rowCenters, gapBelow } = layout(
+    people,
+    gen,
+    looseCouples,
+  );
 
   const ids = [...people.keys()];
   const info = new Map(
@@ -557,29 +577,40 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
   const chanLeft = routes.size ? Math.max(0, 10 - chanMin) : 0;
   const chanRight = routes.size ? Math.max(0, chanMax + 10 - width) : 0;
 
-  const couples = [];
-  const seenCouples = new Set();
-  for (const p of people.values()) {
-    if (!p.partner || !pos.has(p.partner)) continue;
-    const key = pairKey(p.id, p.partner);
-    if (seenCouples.has(key)) continue;
-    seenCouples.add(key);
-    couples.push({
-      key,
-      a: p.id,
-      b: p.partner,
-      color: coupleColor(key),
-      loose: looseCouples.has(key),
-      side: "left",
-      lane: 0,
+  const couples = mutualCouples(people)
+    .filter((c) => pos.has(c.a) && pos.has(c.b))
+    .map((c) => {
+      const pa = pos.get(c.a);
+      const pb = pos.get(c.b);
+      return {
+        ...c,
+        color: coupleColor(c.key),
+        loose: people.get(c.a).unitPartner !== c.b,
+        sameRow: Math.abs(pa.y - pb.y) < NODE / 2 + 4,
+        side: "left",
+        lane: 0,
+      };
     });
-  }
 
   const sideCount = { left: 0, right: 0 };
+  const rowLaneCount = new Map();
   for (const c of couples) {
     if (!c.loose) continue;
     const pa = pos.get(c.a);
     const pb = pos.get(c.b);
+
+    if (c.sameRow) {
+      const g = gen.get(c.a);
+      const roomAbove = g > 0 ? (gapBelow[g - 1] ?? 0) : 0;
+      const roomBelow = g < rowCenters.length - 1 ? (gapBelow[g] ?? 0) : 0;
+      c.side = roomBelow >= roomAbove ? "down" : "up";
+      const laneKey = `${g}:${c.side}`;
+      c.lane = rowLaneCount.get(laneKey) ?? 0;
+      rowLaneCount.set(laneKey, c.lane + 1);
+      c.room = Math.max(0, (c.side === "down" ? roomBelow : roomAbove) - 10);
+      continue;
+    }
+
     const topY = Math.min(pa.y, pb.y);
     const botY = Math.max(pa.y, pb.y);
     let leftmost = Math.min(pa.x, pb.x);
@@ -653,6 +684,37 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
       continue;
     }
 
+    if (c.sameRow) {
+      // DISCLAIMER: needed help here
+      const sign = c.side === "up" ? -1 : 1;
+      const bulge = Math.min(NODE / 2 + 16 + c.lane * 12, NODE / 2 + c.room);
+      const y0 = a.y + (sign * NODE) / 2;
+      const y1 = b.y + (sign * NODE) / 2;
+      const cy = a.y + sign * bulge;
+      ctx.strokeStyle = c.color;
+      ctx.beginPath();
+      ctx.moveTo(a.x, y0);
+      ctx.bezierCurveTo(
+        a.x + (b.x - a.x) * 0.25,
+        cy,
+        a.x + (b.x - a.x) * 0.75,
+        cy,
+        b.x,
+        y1,
+      );
+      ctx.stroke();
+      ctx.fillStyle = c.color;
+      for (const [x, y] of [
+        [a.x, y0 + sign],
+        [b.x, y1 + sign],
+      ]) {
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      continue;
+    }
+
     const dir = c.side === "left" ? -1 : 1;
     const topY = Math.min(a.y, b.y);
     const botY = Math.max(a.y, b.y);
@@ -717,8 +779,7 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
     const lowestY = Math.max(...pts.map((p) => p.y));
     const areCouple =
       parents.length === 2 &&
-      people.get(parents[0])?.partner === parents[1] &&
-      people.get(parents[1])?.partner === parents[0] &&
+      people.get(parents[0])?.unitPartner === parents[1] &&
       Math.abs(pts[0].y - pts[1].y) < 1;
 
     const kidPts = kids.map(at);

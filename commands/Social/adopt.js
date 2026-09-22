@@ -10,10 +10,14 @@ const {
   EmbedBuilder,
 } = require("discord.js");
 const Users = require("../../models/userSchema.js");
-const { walkTree, getRelation } = require("../../functions/family.js");
+const {
+  walkTree,
+  walkTreeDepths,
+  getRelation,
+} = require("../../functions/family.js");
 
 const PROPOSAL_TIMEOUT = 2 * 60 * 1000;
-const MAX_PARENTS = 2;
+const MAX_PARENTS = 3;
 const MAX_CHILDREN = 15;
 
 const data = new SlashCommandBuilder()
@@ -88,7 +92,7 @@ async function getAdoptionProblem(parent, child) {
   if (parentFamily.children.includes(child.id)) {
     return `<@${child.id}> is already your child`;
   }
-  if (parent.marriage?.partner === child.id) {
+  if ((parent.marriage?.partners ?? []).some((p) => p.id === child.id)) {
     return `<@${child.id}> is your partner, you can't adopt them`;
   }
   if ((await getRelation(parent, child)) === "sibling") {
@@ -106,8 +110,8 @@ async function getAdoptionProblem(parent, child) {
     return `<@${child.id}> is your ancestor, you can't adopt them`;
   }
 
-  const descendants = await walkTree(parent.id, "children");
-  if (descendants.has(child.id)) {
+  const descendantDepths = await walkTreeDepths(parent.id, "children");
+  if (descendantDepths.has(child.id) && descendantDepths.get(child.id) < 3) {
     return `<@${child.id}> is already your descendant`;
   }
 
@@ -306,7 +310,7 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
     const doc = await Users.findOne({ id: targetUser.id });
     const parentIds = [...(doc?.family?.parents ?? [])];
     const childIds = [...(doc?.family?.children ?? [])];
-    const partnerId = doc?.marriage?.partner ?? null;
+    const partnerIds = (doc?.marriage?.partners ?? []).map((p) => p.id);
 
     const [parentDocs, childDocs] = await Promise.all([
       parentIds.length
@@ -335,8 +339,8 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
       .addFields(
         { name: "Parents", value: formatList(parentIds), inline: true },
         {
-          name: "Partner",
-          value: partnerId ? `<@${partnerId}>` : "None",
+          name: partnerIds.length > 1 ? "Partners" : "Partner",
+          value: formatList(partnerIds),
           inline: true,
         },
         { name: "Siblings", value: formatList([...siblings]), inline: true },
