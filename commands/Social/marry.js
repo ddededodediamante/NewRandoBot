@@ -10,7 +10,6 @@ const {
   EmbedBuilder,
 } = require("discord.js");
 const Users = require("../../models/userSchema.js");
-const { getRelation } = require("../../functions/family.js");
 
 const PROPOSAL_TIMEOUT = 2 * 60 * 1000;
 const MAX_PARTNERS = 2;
@@ -69,18 +68,6 @@ async function getUser(id) {
   return user;
 }
 
-const RELATION_LABELS = {
-  parent: "your parent",
-  child: "your child",
-  sibling: "your sibling",
-  ancestor: "your ancestor",
-  descendant: "your descendant",
-};
-
-async function getFamilyProblem(proposer, proposed) {
-  return null;
-}
-
 const run = async (interaction = ChatInputCommandInteraction.prototype) => {
   const subcommand = interaction.options.getSubcommand();
 
@@ -137,8 +124,7 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
     );
     if (locked.some((id) => pendingProposals.has(id))) {
       return interaction.reply({
-        content:
-          "❌ One of you already has a pending proposal, wait a moment",
+        content: "❌ One of you already has a pending proposal, wait a moment",
         flags: "Ephemeral",
       });
     }
@@ -236,7 +222,7 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
             "❌ One of you got married to someone else while this proposal was open",
           components: [buildRow(true)],
         });
-        return false;
+        return;
       }
 
       const staleFamily = await getFamilyProblem(a, b);
@@ -246,12 +232,15 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
           components: [buildRow(true)],
           allowedMentions: { parse: [] },
         });
-        return false;
+        return;
       }
 
       const marriedAt = new Date();
       a.marriage.partners = [...aPartners, { id: target.id, marriedAt }];
-      b.marriage.partners = [...bPartners, { id: interaction.user.id, marriedAt }];
+      b.marriage.partners = [
+        ...bPartners,
+        { id: interaction.user.id, marriedAt },
+      ];
       await Promise.all([a.save(), b.save()]);
 
       await i.update({
@@ -260,14 +249,15 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
         allowedMentions: { users: [interaction.user.id, target.id] },
       });
 
-      try {
-        const currentPartnerUser = await interaction.client.users.fetch(currentPartnerId);
-        await currentPartnerUser.send(
-          `💍 Heads up! **${interaction.user.displayName}** just married ${target.username} too. You're both still married to them.`,
-        );
-      } catch (err) {}
-
-      return false;
+      if (currentPartnerId) {
+        try {
+          const currentPartnerUser =
+            await interaction.client.users.fetch(currentPartnerId);
+          await currentPartnerUser.send(
+            `💍 Heads up! **${interaction.user.displayName}** just married ${target.username} too. You're both still married to them.`,
+          );
+        } catch (err) {}
+      }
     };
 
     collector.on("collect", async (i) => {
@@ -287,10 +277,10 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
           });
         }
 
-        const pending = await finalize(i);
-        if (!pending) releaseLocks();
+        await finalize(i);
       } catch (err) {
         console.error("Marry accept error:", err);
+      } finally {
         releaseLocks();
       }
     });
