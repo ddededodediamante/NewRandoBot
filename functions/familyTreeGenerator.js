@@ -19,7 +19,6 @@ const ARROW_H = 12;
 const BG = "#ffffff";
 const TEXT = "#000000";
 const FOCUS_RING = "#e8590c";
-const PARTNER_COLOR = "#e03131";
 const FAMILY_COLORS = [
   "#1971c2",
   "#2f9e44",
@@ -140,6 +139,33 @@ function tryAssign(people, ignoredPartners) {
 }
 
 const pairKey = (a, b) => [a, b].sort().join(":");
+
+/* DISCLAIMER: Mmm I used the deterministic text -> number
+but then I also used EVIL AI to make the color red-ish */
+function coupleColor(key) {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  h >>>= 0;
+
+  const hue = ((h % 61) - 30 + 360) % 360;
+  const sat = 60 + ((h >>> 8) % 25);
+  const light = 42 + ((h >>> 16) % 14);
+
+  const s = sat / 100;
+  const l = light / 100;
+  const f = (n) => {
+    const k = (n + hue / 30) % 12;
+    const v =
+      l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(v * 255)
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
 
 function assignGenerations(people) {
   const looseCouples = new Set();
@@ -531,10 +557,52 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
   const chanLeft = routes.size ? Math.max(0, 10 - chanMin) : 0;
   const chanRight = routes.size ? Math.max(0, chanMax + 10 - width) : 0;
 
+  const couples = [];
+  const seenCouples = new Set();
+  for (const p of people.values()) {
+    if (!p.partner || !pos.has(p.partner)) continue;
+    const key = pairKey(p.id, p.partner);
+    if (seenCouples.has(key)) continue;
+    seenCouples.add(key);
+    couples.push({
+      key,
+      a: p.id,
+      b: p.partner,
+      color: coupleColor(key),
+      loose: looseCouples.has(key),
+      side: "left",
+      lane: 0,
+    });
+  }
+
+  const sideCount = { left: 0, right: 0 };
+  for (const c of couples) {
+    if (!c.loose) continue;
+    const pa = pos.get(c.a);
+    const pb = pos.get(c.b);
+    const topY = Math.min(pa.y, pb.y);
+    const botY = Math.max(pa.y, pb.y);
+    let leftmost = Math.min(pa.x, pb.x);
+    let rightmost = Math.max(pa.x, pb.x);
+    for (const q of pos.values()) {
+      if (q.y >= topY - NODE / 2 && q.y <= botY + NODE / 2) {
+        leftmost = Math.min(leftmost, q.x);
+        rightmost = Math.max(rightmost, q.x);
+      }
+    }
+    const leftCost = pa.x + pb.x - 2 * leftmost;
+    const rightCost = 2 * rightmost - (pa.x + pb.x);
+    c.side = rightCost < leftCost ? "right" : "left";
+    c.lane = sideCount[c.side]++;
+  }
+  const looseRoom = (n) => (n ? 22 + n * 16 + 8 : 0);
+  const rightLooseRoom = looseRoom(sideCount.right);
+
   const backRoom =
-    (backEdges.size ? 26 + backEdges.size * 16 + ARROW_H : 0) + chanRight;
-  const leftRoom =
-    (looseCouples.size ? 22 + looseCouples.size * 16 + 8 : 0) + chanLeft;
+    (backEdges.size ? 26 + backEdges.size * 16 + ARROW_H : 0) +
+    chanRight +
+    rightLooseRoom;
+  const leftRoom = looseRoom(sideCount.left) + chanLeft;
   const canvasW = Math.ceil(width + PAD * 2 + backRoom + leftRoom);
   const canvasH = Math.ceil(height + PAD * 2);
 
@@ -569,44 +637,45 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
 
-  const drawnCouples = new Set();
-  let looseIndex = 0;
-  for (const p of people.values()) {
-    if (!p.partner || !pos.has(p.partner)) continue;
-    const key = [p.id, p.partner].sort().join(":");
-    if (drawnCouples.has(key)) continue;
-    drawnCouples.add(key);
-    const a = at(p.id);
-    const b = at(p.partner);
+  const ringColor = new Map();
+  for (const c of couples) {
+    if (!ringColor.has(c.a)) ringColor.set(c.a, c.color);
+    if (!ringColor.has(c.b)) ringColor.set(c.b, c.color);
 
-    if (!looseCouples.has(key)) {
-      line(PARTNER_COLOR, [
+    const a = at(c.a);
+    const b = at(c.b);
+
+    if (!c.loose) {
+      line(c.color, [
         [a.x, a.y],
         [b.x, b.y],
       ]);
       continue;
     }
 
+    const dir = c.side === "left" ? -1 : 1;
     const topY = Math.min(a.y, b.y);
     const botY = Math.max(a.y, b.y);
-    let leftmost = Math.min(a.x, b.x);
-    for (const id of people.keys()) {
+    let outer = c.side === "left" ? Infinity : -Infinity;
+    for (const id of [c.a, c.b, ...people.keys()]) {
       const q = at(id);
       if (q.y >= topY - NODE / 2 && q.y <= botY + NODE / 2) {
-        leftmost = Math.min(leftmost, q.x);
+        outer = dir < 0 ? Math.min(outer, q.x) : Math.max(outer, q.x);
       }
     }
-    const left = leftmost - NODE / 2 - 22 - looseIndex * 16 - chanLeft;
-    looseIndex++;
-    ctx.strokeStyle = PARTNER_COLOR;
+    const control =
+      outer +
+      dir * (NODE / 2 + 22 + c.lane * 16) +
+      (dir < 0 ? -chanLeft : chanRight);
+    ctx.strokeStyle = c.color;
     ctx.beginPath();
-    ctx.moveTo(a.x - NODE / 2, a.y);
-    ctx.bezierCurveTo(left, a.y, left, b.y, b.x - NODE / 2, b.y);
+    ctx.moveTo(a.x + (dir * NODE) / 2, a.y);
+    ctx.bezierCurveTo(control, a.y, control, b.y, b.x + (dir * NODE) / 2, b.y);
     ctx.stroke();
-    ctx.fillStyle = PARTNER_COLOR;
+    ctx.fillStyle = c.color;
     for (const pt of [a, b]) {
       ctx.beginPath();
-      ctx.arc(pt.x - NODE / 2 - 1, pt.y, 4, 0, Math.PI * 2);
+      ctx.arc(pt.x + (dir * NODE) / 2 - dir, pt.y, 4, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -718,7 +787,13 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
 
       const n = bulge.get("k") ?? 0;
       bulge.set("k", n + 1);
-      const side = Math.max(from.x, to.x) + NODE / 2 + 26 + n * 16 + chanRight;
+      const side =
+        Math.max(from.x, to.x) +
+        NODE / 2 +
+        26 +
+        n * 16 +
+        chanRight +
+        rightLooseRoom;
 
       const startX = from.x + NODE / 2;
       const endX = to.x + NODE / 2;
@@ -747,7 +822,7 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
     const img = avatarMap.get(id);
     const isFocus = id === focusId;
 
-    ctx.fillStyle = isFocus ? FOCUS_RING : "#000000";
+    ctx.fillStyle = isFocus ? FOCUS_RING : (ringColor.get(id) ?? "#000000");
     ctx.beginPath();
     ctx.arc(x, y, NODE / 2 + (isFocus ? 4 : 2), 0, Math.PI * 2);
     ctx.fill();
