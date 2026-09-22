@@ -268,9 +268,9 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
         .setFields(fields)
         .setFooter({ text: `ID: ${user.id}` });
 
-      if (useer.bannerURL?.()) {
+      if (user.bannerURL?.()) {
         embed.setImage(user.bannerURL({ dynamic: true, size: 1024 }));
-      } else if (user.accentColor) {
+      } else if (user?.accentColor) {
         embed.setColor(user.accentColor);
       }
       break;
