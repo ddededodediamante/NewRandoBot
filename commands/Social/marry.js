@@ -78,9 +78,7 @@ const RELATION_LABELS = {
 };
 
 async function getFamilyProblem(proposer, proposed) {
-  const relation = await getRelation(proposer, proposed);
-  if (!relation) return null;
-  return `<@${proposed.id}> is ${RELATION_LABELS[relation]}, you can't marry family`;
+  return null;
 }
 
 const run = async (interaction = ChatInputCommandInteraction.prototype) => {
@@ -222,10 +220,7 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
 
     let answered = false;
 
-    // Runs once the target has accepted: finalizes right away, unless the
-    // proposer already has a partner, in which case that partner must also
-    // agree before anything is saved. Returns true while a second approval
-    // step is still pending (locks stay held), false once fully settled.
+    // DISCLAIMER: yeah i needed help here tooo...
     const finalize = async (i) => {
       const [a, b] = await Promise.all([
         getUser(interaction.user.id),
