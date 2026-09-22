@@ -129,15 +129,6 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
       });
     }
 
-    const familyProblem = await getFamilyProblem(proposer, proposed);
-    if (familyProblem) {
-      return interaction.reply({
-        content: `❌ ${familyProblem}`,
-        flags: "Ephemeral",
-        allowedMentions: { parse: [] },
-      });
-    }
-
     const buildRow = (disabled = false) =>
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -221,16 +212,6 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
           content:
             "❌ One of you got married to someone else while this proposal was open",
           components: [buildRow(true)],
-        });
-        return;
-      }
-
-      const staleFamily = await getFamilyProblem(a, b);
-      if (staleFamily) {
-        await i.update({
-          content: `❌ The marriage can't go through anymore: ${staleFamily}`,
-          components: [buildRow(true)],
-          allowedMentions: { parse: [] },
         });
         return;
       }
