@@ -167,14 +167,22 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
 
     const collector = message.createMessageComponentCollector({
       componentType: ComponentType.Button,
-      filter: (i) => i.user.id === target.id,
+      filter: (i) =>
+        i.user.id === target.id ||
+        (i.user.id === interaction.user.id &&
+          i.customId.startsWith("marry_decline_")),
       time: PROPOSAL_TIMEOUT,
       max: 1,
     });
 
     const bystanders = message.createMessageComponentCollector({
       componentType: ComponentType.Button,
-      filter: (i) => i.user.id !== target.id,
+      filter: (i) =>
+        i.user.id !== target.id &&
+        !(
+          i.user.id === interaction.user.id &&
+          i.customId.startsWith("marry_decline_")
+        ),
       time: PROPOSAL_TIMEOUT,
     });
     bystanders.on("collect", (i) =>
@@ -195,7 +203,10 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
       try {
         if (i.customId.startsWith("marry_decline_")) {
           return await i.update({
-            content: `💔 ${target} declined **${interaction.user.displayName}**'s proposal...`,
+            content:
+              i.user.id === target.id
+                ? `💔 ${target} declined **${interaction.user.displayName}**'s proposal...`
+                : `💔 **${interaction.user.displayName}** withdrew their proposal to ${target}...`,
             components: [buildRow(true)],
             allowedMentions: { parse: [] },
           });

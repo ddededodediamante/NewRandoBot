@@ -200,14 +200,22 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
 
     const collector = message.createMessageComponentCollector({
       componentType: ComponentType.Button,
-      filter: (i) => i.user.id === target.id,
+      filter: (i) =>
+        i.user.id === target.id ||
+        (i.user.id === interaction.user.id &&
+          i.customId.startsWith("adopt_decline_")),
       time: PROPOSAL_TIMEOUT,
       max: 1,
     });
 
     const bystanders = message.createMessageComponentCollector({
       componentType: ComponentType.Button,
-      filter: (i) => i.user.id !== target.id,
+      filter: (i) =>
+        i.user.id !== target.id &&
+        !(
+          i.user.id === interaction.user.id &&
+          i.customId.startsWith("adopt_decline_")
+        ),
       time: PROPOSAL_TIMEOUT,
     });
     bystanders.on("collect", (i) =>
@@ -228,7 +236,10 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
       try {
         if (i.customId.startsWith("adopt_decline_")) {
           return await i.update({
-            content: `🚪 ${target} declined to be adopted by **${interaction.user.displayName}**...`,
+            content:
+              i.user.id === target.id
+                ? `🚪 ${target} declined to be adopted by **${interaction.user.displayName}**...`
+                : `🚪 **${interaction.user.displayName}** cancelled their adoption request to ${target}...`,
             components: [buildRow(true)],
             allowedMentions: { parse: [] },
           });
