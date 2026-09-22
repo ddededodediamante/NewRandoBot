@@ -690,6 +690,27 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
 
   const lanesUsed = new Map();
 
+  const verticals = [];
+  const VSTEP = 7;
+  const placeVertical = (x, y0, y1, maxShift) => {
+    const clear = (cx) =>
+      verticals.every(
+        (s) => Math.abs(s.x - cx) >= VSTEP - 1 || s.y1 <= y0 || s.y0 >= y1,
+      );
+    let chosen = x;
+    for (let n = 0; n * VSTEP <= maxShift; n++) {
+      const cand = [x + n * VSTEP, x - n * VSTEP].find(
+        (cx) => Math.abs(cx - x) <= maxShift && clear(cx),
+      );
+      if (cand !== undefined) {
+        chosen = cand;
+        break;
+      }
+    }
+    verticals.push({ x: chosen, y0, y1 });
+    return chosen;
+  };
+
   families.forEach(({ parents, kids }, index) => {
     const color = FAMILY_COLORS[index % FAMILY_COLORS.length];
     const pts = parents.map(at);
@@ -712,7 +733,12 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
 
     const stemXs = [];
     if (areCouple) {
-      const anchorX = (pts[0].x + pts[1].x) / 2;
+      const anchorX = placeVertical(
+        (pts[0].x + pts[1].x) / 2,
+        lowestY,
+        busY,
+        NODE / 2,
+      );
       line(color, [
         [anchorX, lowestY],
         [anchorX, busY],
@@ -724,20 +750,22 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
         const fromY = p.y + NODE / 2 + LABEL_H;
         const channel = routes.get(`${index}:${id}`);
         if (channel === undefined) {
+          const sx = placeVertical(p.x, fromY, busY, NODE / 2 - 8);
           line(color, [
-            [p.x, fromY],
-            [p.x, busY],
+            [sx, fromY],
+            [sx, busY],
           ]);
-          stemXs.push(p.x);
+          stemXs.push(sx);
           return;
         }
         const stemLane = lanesUsed.get(p.y) ?? 0;
         lanesUsed.set(p.y, stemLane + 1);
         const laneY = fromY + 6 + stemLane * LANE;
         const cx = channel + PAD + leftRoom;
+        const sx = placeVertical(p.x, fromY, laneY, NODE / 2 - 8);
         line(color, [
-          [p.x, fromY],
-          [p.x, laneY],
+          [sx, fromY],
+          [sx, laneY],
           [cx, laneY],
           [cx, busY],
         ]);
@@ -748,25 +776,27 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
     const kidLinks = kids.map((kidId, i) => {
       const k = kidPts[i];
       const channel = routes.get(`${index}:kid:${kidId}`);
+      const tipY = k.y - NODE / 2 - 3;
       return {
         k,
+        kx: placeVertical(k.x, busY, tipY - ARROW_H + 1, NODE / 2 - 8),
         cx: channel === undefined ? null : channel + PAD + leftRoom,
         id: kidId,
       };
     });
 
-    const xs = [...stemXs, ...kidLinks.map((l) => l.cx ?? l.k.x)];
+    const xs = [...stemXs, ...kidLinks.map((l) => l.cx ?? l.kx)];
     line(color, [
       [Math.min(...xs), busY],
       [Math.max(...xs), busY],
     ]);
 
-    for (const { k, cx, id } of kidLinks) {
+    for (const { k, kx, cx, id } of kidLinks) {
       const tipY = k.y - NODE / 2 - 3;
       if (cx === null) {
         line(color, [
-          [k.x, busY],
-          [k.x, tipY - ARROW_H + 1],
+          [kx, busY],
+          [kx, tipY - ARROW_H + 1],
         ]);
       } else {
         const above = rowCenters[gen.get(id) - 1] + PAD;
@@ -776,11 +806,11 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
         line(color, [
           [cx, busY],
           [cx, dropY],
-          [k.x, dropY],
-          [k.x, tipY - ARROW_H + 1],
+          [kx, dropY],
+          [kx, tipY - ARROW_H + 1],
         ]);
       }
-      arrowDown(color, k.x, tipY);
+      arrowDown(color, kx, tipY);
     }
   });
 
