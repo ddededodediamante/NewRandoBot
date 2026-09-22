@@ -12,13 +12,13 @@ const {
 const Users = require("../../models/userSchema.js");
 const { walkTree, getRelation } = require("../../functions/family.js");
 
-const PROPOSAL_TIMEOUT = 60 * 1000;
+const PROPOSAL_TIMEOUT = 2 * 60 * 1000;
 const MAX_PARENTS = 2;
 const MAX_CHILDREN = 15;
 
 const data = new SlashCommandBuilder()
   .setName("adopt")
-  .setDescription("Social | Adopt other users and build a family tree")
+  .setDescription("Social | Adopt other users and build a family tree (just for fun)")
   .setContexts(
     InteractionContextType.BotDM,
     InteractionContextType.Guild,

@@ -12,7 +12,7 @@ const {
 const Users = require("../../models/userSchema.js");
 const { getRelation } = require("../../functions/family.js");
 
-const PROPOSAL_TIMEOUT = 60 * 1000;
+const PROPOSAL_TIMEOUT = 2 * 60 * 1000;
 
 const data = new SlashCommandBuilder()
   .setName("marry")
