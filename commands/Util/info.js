@@ -268,10 +268,10 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
         .setFields(fields)
         .setFooter({ text: `ID: ${user.id}` });
 
-      if (fullUser.bannerURL?.()) {
-        embed.setImage(fullUser.bannerURL({ dynamic: true, size: 1024 }));
-      } else if (fullUser.accentColor) {
-        embed.setColor(fullUser.accentColor);
+      if (user.bannerURL?.()) {
+        embed.setImage(user.bannerURL({ dynamic: true, size: 1024 }));
+      } else if (user?.accentColor) {
+        embed.setColor(user.accentColor);
       }
       break;
     }
