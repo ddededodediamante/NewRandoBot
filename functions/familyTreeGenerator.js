@@ -32,8 +32,9 @@ const FAMILY_COLORS = [
   "#a550ad",
 ];
 
-async function collectFamily(startId) {
+async function collectFamily(startId, maxGenerations = Infinity) {
   const people = new Map();
+  const offset = new Map([[startId, 0]]);
   let frontier = [startId];
 
   while (frontier.length) {
@@ -56,12 +57,22 @@ async function collectFamily(startId) {
       };
       people.set(id, node);
 
-      for (const rel of [...node.parents, ...node.children, ...node.partners]) {
-        if (rel && !people.has(rel)) next.push(rel);
-      }
+      const at = offset.get(id);
+      const reach = (ids, to) => {
+        if (Math.abs(to) > maxGenerations) return;
+        for (const rel of ids) {
+          if (rel && !offset.has(rel)) {
+            offset.set(rel, to);
+            next.push(rel);
+          }
+        }
+      };
+      reach(node.parents, at - 1);
+      reach(node.children, at + 1);
+      reach(node.partners, at);
     }
 
-    frontier = [...new Set(next)];
+    frontier = next;
   }
 
   for (const p of people.values()) {
@@ -518,6 +529,18 @@ function planChannels(people, pos, looseCouples, families, labelHalf) {
   return { routes, minX, maxX };
 }
 
+const avatarCache = new Map();
+
+async function cachedImage(url) {
+  if (avatarCache.has(url)) return avatarCache.get(url);
+  const img = await loadImage(url);
+  if (avatarCache.size >= 100) {
+    avatarCache.delete(avatarCache.keys().next().value);
+  }
+  avatarCache.set(url, img);
+  return img;
+}
+
 async function renderFamilyTree(allPeople, focusId, resolveUser) {
   const backEdges = findBackEdges(allPeople);
   const people = new Map();
@@ -546,7 +569,7 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
         const url = info.get(id)?.avatarURL;
         if (!url) return [id, null];
         try {
-          return [id, await loadImage(url)];
+          return [id, await cachedImage(url)];
         } catch {
           return [id, null];
         }

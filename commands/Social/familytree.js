@@ -28,6 +28,13 @@ const data = new SlashCommandBuilder()
       .setName("target")
       .setDescription("Whose family to show (default: you)")
       .setRequired(false),
+  )
+  .addIntegerOption((opt) =>
+    opt
+      .setName("generations")
+      .setDescription("Max generations to show above and below (default: all)")
+      .setMinValue(1)
+      .setRequired(false),
   );
 
 const run = async (interaction = ChatInputCommandInteraction.prototype) => {
@@ -35,7 +42,10 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
 
   await interaction.deferReply();
 
-  const people = await collectFamily(targetUser.id);
+  const people = await collectFamily(
+    targetUser.id,
+    interaction.options.getInteger("generations") ?? Infinity,
+  );
 
   if (people.size <= 1) {
     return interaction.editReply({
