@@ -104,13 +104,13 @@ async function getAdoptionProblem(parent, child) {
   }
 
   const [ancestors, descendants] = await Promise.all([
-    walkTree(parent.id, "parents", child.id),
-    walkTree(parent.id, "children", child.id),
+    walkTree(parent, "parents", child.id),
+    walkTree(parent, "children", child.id, 2),
   ]);
   if (ancestors.has(child.id)) {
     return `<@${child.id}> is your ancestor, you can't adopt them`;
   }
-  if (descendants.has(child.id) && descendants.get(child.id) < 3) {
+  if (descendants.has(child.id)) {
     return `<@${child.id}> is already your descendant`;
   }
 
@@ -313,10 +313,10 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
 
     const [parentDocs, childDocs] = await Promise.all([
       parentIds.length
-        ? Users.find({ id: { $in: parentIds } })
+        ? Users.find({ id: { $in: parentIds } }, { "family.children": 1 }).lean()
         : Promise.resolve([]),
       childIds.length
-        ? Users.find({ id: { $in: childIds } })
+        ? Users.find({ id: { $in: childIds } }, { "family.children": 1 }).lean()
         : Promise.resolve([]),
     ]);
 

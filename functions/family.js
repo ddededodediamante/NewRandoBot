@@ -1,10 +1,21 @@
 const Users = require("../models/userSchema.js");
 
-async function walkTree(startId, direction, stopAt) {
+async function walkTree(start, direction, stopAt, maxDepth = Infinity) {
+  const startId = start.id;
   const depth = new Map([[startId, 0]]);
-  let frontier = [startId];
+  let frontier = [];
+  for (const id of start.family?.[direction] ?? []) {
+    if (!depth.has(id)) {
+      depth.set(id, 1);
+      frontier.push(id);
+    }
+  }
 
-  while (frontier.length && !depth.has(stopAt)) {
+  for (
+    let level = 1;
+    frontier.length && level < maxDepth && !depth.has(stopAt);
+    level++
+  ) {
     const docs = await Users.find(
       { id: { $in: frontier } },
       { id: 1, [`family.${direction}`]: 1 },
