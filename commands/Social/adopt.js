@@ -10,11 +10,7 @@ const {
   EmbedBuilder,
 } = require("discord.js");
 const Users = require("../../models/userSchema.js");
-const {
-  walkTree,
-  walkTreeDepths,
-  getRelation,
-} = require("../../functions/family.js");
+const { walkTree } = require("../../functions/family.js");
 
 const PROPOSAL_TIMEOUT = 2 * 60 * 1000;
 const MAX_PARENTS = 3;
@@ -22,7 +18,9 @@ const MAX_CHILDREN = 15;
 
 const data = new SlashCommandBuilder()
   .setName("adopt")
-  .setDescription("Social | Adopt other users and build a family tree (just for fun)")
+  .setDescription(
+    "Social | Adopt other users and build a family tree (just for fun)",
+  )
   .setContexts(
     InteractionContextType.BotDM,
     InteractionContextType.Guild,
@@ -95,7 +93,7 @@ async function getAdoptionProblem(parent, child) {
   if ((parent.marriage?.partners ?? []).some((p) => p.id === child.id)) {
     return `<@${child.id}> is your partner, you can't adopt them`;
   }
-  if ((await getRelation(parent, child)) === "sibling") {
+  if (parentFamily.parents.some((id) => childFamily.parents.includes(id))) {
     return `<@${child.id}> is your sibling, you can't adopt them`;
   }
   if (parentFamily.children.length >= MAX_CHILDREN) {
@@ -105,13 +103,14 @@ async function getAdoptionProblem(parent, child) {
     return `<@${child.id}> already has **${MAX_PARENTS}** parents, that's the maximum`;
   }
 
-  const ancestors = await walkTree(parent.id, "parents");
+  const [ancestors, descendants] = await Promise.all([
+    walkTree(parent.id, "parents", child.id),
+    walkTree(parent.id, "children", child.id),
+  ]);
   if (ancestors.has(child.id)) {
     return `<@${child.id}> is your ancestor, you can't adopt them`;
   }
-
-  const descendantDepths = await walkTreeDepths(parent.id, "children");
-  if (descendantDepths.has(child.id) && descendantDepths.get(child.id) < 3) {
+  if (descendants.has(child.id) && descendants.get(child.id) < 3) {
     return `<@${child.id}> is already your descendant`;
   }
 

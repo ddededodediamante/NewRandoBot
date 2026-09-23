@@ -10,6 +10,7 @@ const {
   EmbedBuilder,
 } = require("discord.js");
 const Users = require("../../models/userSchema.js");
+const { isBlockedMarriage } = require("../../functions/family.js");
 
 const PROPOSAL_TIMEOUT = 2 * 60 * 1000;
 const MAX_PARTNERS = 2;
@@ -99,6 +100,13 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
         content: `❌ You're already married to ${target}`,
         flags: "Ephemeral",
         allowedMentions: { parse: [] },
+      });
+    }
+
+    if (await isBlockedMarriage(proposer, proposed)) {
+      return interaction.reply({
+        content: `❌ You can't marry your parents, children, grandparents or grandchildren`,
+        flags: "Ephemeral",
       });
     }
 
@@ -204,6 +212,7 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
       const bPartners = b.marriage?.partners ?? [];
 
       if (
+        (await isBlockedMarriage(a, b)) ||
         aPartners.length >= MAX_PARTNERS ||
         bPartners.length >= MAX_PARTNERS ||
         aPartners.some((p) => p.id === target.id)

@@ -1,9 +1,8 @@
 const { createCanvas, loadImage } = require("@napi-rs/canvas");
 const Users = require("../models/userSchema.js");
 
-const MAX_PEOPLE = 60;
-const MAX_OUTPUT_WIDTH = 2400;
-const MAX_OUTPUT_HEIGHT = 900;
+const MAX_OUTPUT_WIDTH = 2000;
+const MAX_OUTPUT_HEIGHT = 1000;
 
 const NODE = 80;
 const H_GAP = 36;
@@ -36,19 +35,17 @@ const FAMILY_COLORS = [
 async function collectFamily(startId) {
   const people = new Map();
   let frontier = [startId];
-  let truncated = false;
 
   while (frontier.length) {
-    const docs = await Users.find({ id: { $in: frontier } });
+    const docs = await Users.find(
+      { id: { $in: frontier } },
+      { id: 1, family: 1, "marriage.partners.id": 1 },
+    ).lean();
     const found = new Map(docs.map((d) => [d.id, d]));
     const next = [];
 
     for (const id of frontier) {
       if (people.has(id)) continue;
-      if (people.size >= MAX_PEOPLE) {
-        truncated = true;
-        continue;
-      }
 
       const doc = found.get(id);
       const node = {
@@ -73,7 +70,7 @@ async function collectFamily(startId) {
     p.partners = p.partners.filter((id) => id !== p.id && people.has(id));
   }
 
-  return { people, truncated };
+  return people;
 }
 
 function findBackEdges(people) {
@@ -685,7 +682,7 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
     }
 
     if (c.sameRow) {
-      // DISCLAIMER: needed help here
+      // DISCLAIMER: I used AI for this math because it lowkey broke my brain
       const sign = c.side === "up" ? -1 : 1;
       const bulge = Math.min(NODE / 2 + 16 + c.lane * 12, NODE / 2 + c.room);
       const y0 = a.y + (sign * NODE) / 2;
@@ -970,4 +967,4 @@ async function renderFamilyTree(allPeople, focusId, resolveUser) {
   return canvas.toBuffer("image/png");
 }
 
-module.exports = { collectFamily, renderFamilyTree, MAX_PEOPLE };
+module.exports = { collectFamily, renderFamilyTree };

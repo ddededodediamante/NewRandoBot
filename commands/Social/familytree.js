@@ -9,7 +9,6 @@ const {
 const {
   collectFamily,
   renderFamilyTree,
-  MAX_PEOPLE,
 } = require("../../functions/familyTreeGenerator.js");
 
 const data = new SlashCommandBuilder()
@@ -36,7 +35,7 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
 
   await interaction.deferReply();
 
-  const { people, truncated } = await collectFamily(targetUser.id);
+  const people = await collectFamily(targetUser.id);
 
   if (people.size <= 1) {
     return interaction.editReply({
@@ -70,11 +69,7 @@ const run = async (interaction = ChatInputCommandInteraction.prototype) => {
   const embed = new EmbedBuilder()
     .setTitle(`🌳 ${targetUser.username}'s Family Tree`)
     .setImage("attachment://familytree.png")
-    .setFooter({
-      text: truncated
-        ? `${people.size} members shown (limit ${MAX_PEOPLE}, some relatives are hidden)`
-        : `${people.size} members`,
-    });
+    .setFooter({ text: `${people.size} members` });
 
   return interaction.editReply({
     embeds: [embed],
