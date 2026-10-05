@@ -92,8 +92,8 @@ const BOSS_MESSAGES = [
 ];
 
 function getRandomBossMessage(crimeVerb) {
-  const template = BOSS_MESSAGES[random(0, BOSS_MESSAGES.length)];
-  return template.replace("{crime}", crimeVerb);
+  const template = BOSS_MESSAGES[random(0, BOSS_MESSAGES.length - 1)];
+  return String(template).replace("{crime}", crimeVerb);
 }
 
 const run = async (interaction = ChatInputCommandInteraction.prototype) => {
